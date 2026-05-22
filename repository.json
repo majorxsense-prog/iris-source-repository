@@ -1,7 +1,7 @@
 {
   "name": "Iris Source Repository",
   "id": "majorxsense-prog.iris-source-repository",
-  "version": 1,
+  "version": 2,
   "schemaVersion": 1,
   "description": "Community source catalog for the Iris reader app.",
   "homepage": "https://github.com/majorxsense-prog/iris-source-repository",
@@ -22,6 +22,22 @@
       "icon": "flame",
       "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=flame-comics",
       "manifestURL": "https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/sources/flame-comics/source.json"
+    },
+    {
+      "id": "asura-scans",
+      "name": "Asura Scans",
+      "author": "majorxsense-prog",
+      "description": "Read titles from asurascans.com.",
+      "language": "en",
+      "contentRating": "Everyone",
+      "website": "https://asurascans.com",
+      "version": "0.1.0",
+      "manifest": "sources/asura-scans/source.json",
+      "package": "sources/asura-scans",
+      "source": "sources/asura-scans/source.js",
+      "icon": "book.closed",
+      "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=asura-scans",
+      "manifestURL": "https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/sources/asura-scans/source.json"
     }
   ]
 }
