@@ -1,0 +1,23 @@
+{
+  "id": "flame-comics",
+  "name": "Flame Comics",
+  "author": "Community",
+  "description": "Community source for flamecomics.xyz.",
+  "version": "0.1.0",
+  "schemaVersion": 1,
+  "language": "en",
+  "website": "https://flamecomics.xyz",
+  "contentRating": "Everyone",
+  "repository": "https://github.com/majorxsense-prog/iris-source-repository",
+  "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=flame-comics",
+  "entry": "FlameComicsSourcePlugin.swift",
+  "runtime": {
+    "kind": "native-swift",
+    "minimumIrisVersion": "0.1.0"
+  },
+  "capabilities": [
+    "CHAPTER_PROVIDING",
+    "DISCOVER_SECTION_PROVIDING",
+    "SEARCH_RESULT_PROVIDING"
+  ]
+}
