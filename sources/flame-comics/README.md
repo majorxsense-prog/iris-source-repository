@@ -2,7 +2,7 @@
 
 JavaScript source plugin for `https://flamecomics.xyz`.
 
-Author: Community
+Author: majorxsense-prog
 
 ## Capabilities
 
