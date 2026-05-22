@@ -1,6 +1,6 @@
 # Flame Comics
 
-Swift source plugin for `https://flamecomics.xyz`.
+JavaScript source plugin for `https://flamecomics.xyz`.
 
 Author: Community
 
@@ -28,10 +28,8 @@ The source reads Flame Comics' public Next.js page data:
 iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=flame-comics
 ```
 
-## Native App Registration
+## Runtime
 
-Add `FlameComicsSourcePlugin.swift` to the app target and register:
+This source uses the Iris JavaScript runtime and `source.js`; it does not require a native app rebuild once JavaScript sources are supported.
 
-```swift
-FlameComicsSourcePlugin()
-```
+`FlameComicsSourcePlugin.swift` is kept only as a native reference implementation.

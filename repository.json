@@ -18,7 +18,7 @@
       "version": "0.1.0",
       "manifest": "sources/flame-comics/source.json",
       "package": "sources/flame-comics",
-      "source": "sources/flame-comics/FlameComicsSourcePlugin.swift",
+      "source": "sources/flame-comics/source.js",
       "icon": "flame",
       "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=flame-comics",
       "manifestURL": "https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/sources/flame-comics/source.json"
