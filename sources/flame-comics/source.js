@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: "Community",
-    version: "0.1.0",
+    version: "0.1.1",
     language: "en",
     contentRating: "Everyone",
     website: SITE_BASE_URL,
@@ -28,10 +28,40 @@ async function latestTitles(limit) {
 
 async function discoverSections() {
   return [
+    { id: "popular", title: "Popular", kind: "featured" },
+    { id: "staff_picks", title: "Staff Picks", kind: "simpleCarousel" },
     { id: "latest", title: "Latest", kind: "chapterUpdates" },
-    { id: "popular", title: "Popular", kind: "simpleCarousel" },
     { id: "genres", title: "Genres", kind: "genres" }
   ];
+}
+
+async function discoverItems(sectionID, limit, page) {
+  const data = await nextData("/");
+  const size = Number(limit) || 20;
+  const offset = (Number(page) || 0) * size;
+  let entries = [];
+
+  switch (sectionID) {
+  case "popular":
+    entries = blockSeries(data.popularEntries);
+    break;
+  case "staff_picks":
+    entries = blockSeries(data.staffPicks);
+    break;
+  case "latest":
+  case "latest_updates":
+    entries = blockSeries(data.latestEntries);
+    break;
+  case "genres":
+    return [];
+  default:
+    return latestTitles(size);
+  }
+
+  return entries
+    .map(mapListSeries)
+    .filter(Boolean)
+    .slice(offset, offset + size);
 }
 
 async function search(query) {
@@ -167,6 +197,10 @@ function mapListSeries(series) {
     chapterCount: series.chapter_count || series.chapterCount || 0,
     tags
   });
+}
+
+function blockSeries(section) {
+  return (((section || {}).blocks || [])[0] || {}).series || [];
 }
 
 function mapSeriesDetail(series, chapterCount) {
@@ -347,6 +381,7 @@ const root = typeof globalThis !== "undefined" ? globalThis : this;
 root.getManifest = getManifest;
 root.latestTitles = latestTitles;
 root.discoverSections = discoverSections;
+root.discoverItems = discoverItems;
 root.search = search;
 root.details = details;
 root.chapters = chapters;
@@ -357,6 +392,7 @@ if (typeof module !== "undefined") {
     getManifest,
     latestTitles,
     discoverSections,
+    discoverItems,
     search,
     details,
     chapters,

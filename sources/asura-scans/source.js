@@ -9,7 +9,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.0",
+    version: "0.1.1",
     language: "en",
     contentRating: "Everyone",
     website: SITE_BASE_URL,
@@ -32,11 +32,47 @@ async function latestTitles(limit) {
 
 async function discoverSections() {
   return [
-    { id: "featured", title: "Featured", kind: "featured" },
+    { id: "trending_today", title: "Trending Today", kind: "featured" },
     { id: "latest_updates", title: "Latest Updates", kind: "chapterUpdates" },
-    { id: "popular_today", title: "Popular Today", kind: "simpleCarousel" },
+    { id: "popular_all_time", title: "Popular", kind: "simpleCarousel" },
     { id: "genres", title: "Genres", kind: "genres" }
   ];
+}
+
+async function discoverItems(sectionID, limit, page) {
+  const size = Number(limit) || 20;
+  const offset = (Number(page) || 0) * size;
+
+  switch (sectionID) {
+  case "trending_today":
+  case "featured":
+    return fetchSeries({
+      sort: "trending",
+      order: "desc",
+      limit: size,
+      offset
+    });
+  case "latest_updates":
+  case "latest":
+    return fetchSeries({
+      sort: "latest",
+      order: "desc",
+      limit: size,
+      offset
+    });
+  case "popular":
+  case "popular_all_time":
+    return fetchSeries({
+      sort: "popular",
+      order: "desc",
+      limit: size,
+      offset
+    });
+  case "genres":
+    return [];
+  default:
+    return latestTitles(size);
+  }
 }
 
 async function search(request) {
@@ -314,6 +350,7 @@ const root = typeof globalThis !== "undefined" ? globalThis : this;
 root.getManifest = getManifest;
 root.latestTitles = latestTitles;
 root.discoverSections = discoverSections;
+root.discoverItems = discoverItems;
 root.search = search;
 root.details = details;
 root.chapters = chapters;
@@ -324,6 +361,7 @@ if (typeof module !== "undefined") {
     getManifest,
     latestTitles,
     discoverSections,
+    discoverItems,
     search,
     details,
     chapters,

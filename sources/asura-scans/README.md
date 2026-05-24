@@ -7,6 +7,8 @@ Author: majorxsense-prog
 ## Capabilities
 
 - Latest titles
+- Trending Today discovery
+- Popular discovery
 - Browse/search catalog
 - Series details
 - Chapter list
