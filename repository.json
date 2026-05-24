@@ -1,7 +1,7 @@
 {
   "name": "Iris Source Repository",
   "id": "majorxsense-prog.iris-source-repository",
-  "version": 3,
+  "version": 4,
   "schemaVersion": 1,
   "description": "Community source catalog for the Iris reader app.",
   "homepage": "https://github.com/majorxsense-prog/iris-source-repository",
@@ -38,6 +38,38 @@
       "icon": "book.closed",
       "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=asura-scans",
       "manifestURL": "https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/sources/asura-scans/source.json"
+    },
+    {
+      "id": "mangadex",
+      "name": "MangaDex",
+      "author": "majorxsense-prog",
+      "description": "Read English manga from MangaDex.",
+      "language": "en",
+      "contentRating": "Teen",
+      "website": "https://mangadex.org",
+      "version": "0.1.0",
+      "manifest": "sources/mangadex/source.json",
+      "package": "sources/mangadex",
+      "source": "sources/mangadex/source.js",
+      "icon": "book.pages",
+      "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=mangadex",
+      "manifestURL": "https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/sources/mangadex/source.json"
+    },
+    {
+      "id": "toongod",
+      "name": "ToonGod",
+      "author": "majorxsense-prog",
+      "description": "Read webtoons from toongod.org. Requires browser verification when Cloudflare challenges are active.",
+      "language": "en",
+      "contentRating": "Mature",
+      "website": "https://www.toongod.org/webtoons/",
+      "version": "0.1.0",
+      "manifest": "sources/toongod/source.json",
+      "package": "sources/toongod",
+      "source": "sources/toongod/source.js",
+      "icon": "rectangle.stack",
+      "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=toongod",
+      "manifestURL": "https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/sources/toongod/source.json"
     }
   ]
 }

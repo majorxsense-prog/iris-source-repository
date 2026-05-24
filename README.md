@@ -12,7 +12,10 @@ https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/r
 
 ## Sources
 
-- Flame Comics by Community (`flame-comics`) - `https://flamecomics.xyz`
+- Flame Comics (`flame-comics`) - `https://flamecomics.xyz`
+- Asura Scans (`asura-scans`) - `https://asurascans.com`
+- MangaDex (`mangadex`) - `https://mangadex.org`
+- ToonGod (`toongod`) - `https://www.toongod.org/webtoons/`
 
 ## Catalog Flow
 

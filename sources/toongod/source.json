@@ -1,0 +1,29 @@
+{
+  "id": "toongod",
+  "name": "ToonGod",
+  "author": "majorxsense-prog",
+  "description": "Iris JavaScript source for toongod.org. Requires browser verification when Cloudflare challenges are active.",
+  "version": "0.1.0",
+  "schemaVersion": 1,
+  "language": "en",
+  "website": "https://www.toongod.org/webtoons/",
+  "contentRating": "Mature",
+  "repository": "https://github.com/majorxsense-prog/iris-source-repository",
+  "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=toongod",
+  "entry": "source.js",
+  "runtime": {
+    "kind": "javascript",
+    "entry": "source.js",
+    "minimumIrisVersion": "0.1.0"
+  },
+  "requiresWebSession": true,
+  "cookieDomains": [
+    "www.toongod.org",
+    "toongod.org"
+  ],
+  "capabilities": [
+    "CHAPTER_PROVIDING",
+    "DISCOVER_SECTION_PROVIDING",
+    "SEARCH_RESULT_PROVIDING"
+  ]
+}
