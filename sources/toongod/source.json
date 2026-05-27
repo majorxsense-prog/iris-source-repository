@@ -3,7 +3,7 @@
   "name": "ToonGod",
   "author": "majorxsense-prog",
   "description": "Iris JavaScript source for toongod.org. Requires browser verification when Cloudflare challenges are active.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "schemaVersion": 1,
   "language": "en",
   "website": "https://www.toongod.org/webtoons/",

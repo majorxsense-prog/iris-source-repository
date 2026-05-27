@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.4",
+    version: "0.1.5",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
@@ -103,10 +103,48 @@ function webtoonListPath(pageNumber, order) {
 async function search(request) {
   const query = normalizeQuery(request && (request.title || request.query || request.text || request));
   const page = Number(request && request.page) || 0;
-  const path = query
-    ? `/search/?s=${encodeURIComponent(query)}`
-    : (page > 0 ? `/webtoons/page/${page + 1}/` : "/webtoons/");
-  return parseTitleList(await htmlGet(path), 20);
+  if (!query) {
+    return discoverItems("webtoons", 20, page);
+  }
+
+  const paths = searchPaths(query, page);
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      const items = parseTitleList(await htmlGet(path), 20);
+      hostLog(`ToonGod search path ${path} returned ${items.length} item(s).`);
+      if (items.length) {
+        return items;
+      }
+    } catch (error) {
+      lastError = error;
+      hostLog(`ToonGod search path ${path} failed: ${error.message || error}`);
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+  return [];
+}
+
+function searchPaths(query, page) {
+  const encoded = encodeURIComponent(query);
+  const pageNumber = Math.max(1, (Number(page) || 0) + 1);
+  if (pageNumber > 1) {
+    return [
+      `/page/${pageNumber}/?s=${encoded}&post_type=wp-manga`,
+      `/page/${pageNumber}/?s=${encoded}`,
+      `/search/?s=${encoded}`
+    ];
+  }
+
+  return [
+    `/search/?s=${encoded}`,
+    `/?s=${encoded}&post_type=wp-manga`,
+    `/?s=${encoded}`
+  ];
 }
 
 async function details(title) {
