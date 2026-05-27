@@ -1,5 +1,6 @@
 {
   "id": "rolia-scan",
+  "slug": "rolia-scan",
   "name": "Rolia Scan",
   "author": "majorxsense-prog",
   "description": "Iris JavaScript source for roliascan.com.",
@@ -8,9 +9,18 @@
   "language": "en",
   "website": "https://roliascan.com/home/",
   "contentRating": "Mature",
+  "iconName": "book.pages",
   "repository": "https://github.com/majorxsense-prog/iris-source-repository",
+  "repositoryURL": "https://github.com/majorxsense-prog/iris-source-repository",
+  "repositoryUrl": "https://github.com/majorxsense-prog/iris-source-repository",
   "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=rolia-scan",
   "entry": "source.js",
+  "developers": [
+    {
+      "name": "majorxsense-prog",
+      "github": "https://github.com/majorxsense-prog"
+    }
+  ],
   "runtime": {
     "kind": "javascript",
     "entry": "source.js",

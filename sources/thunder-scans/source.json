@@ -1,5 +1,6 @@
 {
   "id": "thunder-scans",
+  "slug": "thunder-scans",
   "name": "Thunder Scans EN",
   "author": "majorxsense-prog",
   "description": "Iris JavaScript source for en-thunderscans.com.",
@@ -8,9 +9,18 @@
   "language": "en",
   "website": "https://en-thunderscans.com/",
   "contentRating": "Teen",
+  "iconName": "bolt",
   "repository": "https://github.com/majorxsense-prog/iris-source-repository",
+  "repositoryURL": "https://github.com/majorxsense-prog/iris-source-repository",
+  "repositoryUrl": "https://github.com/majorxsense-prog/iris-source-repository",
   "installURL": "iris://source/add?repository=https%3A%2F%2Fraw.githubusercontent.com%2Fmajorxsense-prog%2Firis-source-repository%2Fmain%2Frepository.json&source=thunder-scans",
   "entry": "source.js",
+  "developers": [
+    {
+      "name": "majorxsense-prog",
+      "github": "https://github.com/majorxsense-prog"
+    }
+  ],
   "runtime": {
     "kind": "javascript",
     "entry": "source.js",
