@@ -9,7 +9,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.0",
+    version: "0.1.1",
     language: "en",
     contentRating: "Teen",
     website: SITE_BASE_URL,
