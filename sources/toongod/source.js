@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.5",
+    version: "0.1.6",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
@@ -325,7 +325,8 @@ function parseReaderImages(html) {
     collectReaderImageURLs(html, images, seen);
   }
 
-  return images;
+  const readerPages = images.filter(isReaderPageImageURL);
+  return readerPages.length ? readerPages : images;
 }
 
 function collectReaderImageURLs(content, images, seen) {
@@ -566,10 +567,34 @@ function isUsefulImageURL(url, readerOnly) {
     return looksLikeImage;
   }
 
-  return looksLikeImage
-    || lower.includes("/chapters/")
-    || lower.includes("/chapter/")
-    || /\/uploads\/manga\/[^?#]+\/(?:chapters?|[0-9]+)/i.test(lower);
+  return isReaderPageImageURL(url);
+}
+
+function isReaderPageImageURL(url) {
+  const lower = String(url || "").toLowerCase();
+  if (!/\.(?:avif|webp|jpe?g|png)(?:[?#].*)?$/i.test(lower)) {
+    return false;
+  }
+
+  if (lower.includes("thumb")
+    || lower.includes("thumbnail")
+    || lower.includes("cover")
+    || lower.includes("logo")
+    || lower.includes("arrow")
+    || lower.includes("prev")
+    || lower.includes("next")
+    || lower.includes("banner")
+    || lower.includes("avatar")
+    || lower.includes("wp-content")
+    || lower.includes("toongod.org/wp-")
+    || lower.includes("/uploads/series/")
+    || lower.includes("/uploads/images/")) {
+    return false;
+  }
+
+  return /\/\/i\.tngcdn\.com\/manga_[^\/]+\/[^\/]+\/[^\/]+\.(?:avif|webp|jpe?g|png)(?:[?#].*)?$/i.test(lower)
+    || /\/manga_[^\/]+\/[^\/]+\/(?:\d+|page)[^\/]*\.(?:avif|webp|jpe?g|png)(?:[?#].*)?$/i.test(lower)
+    || /\/chapters?\/[^\/]+\/(?:\d+|page)[^\/]*\.(?:avif|webp|jpe?g|png)(?:[?#].*)?$/i.test(lower);
 }
 
 function normalizeImageURL(value) {
