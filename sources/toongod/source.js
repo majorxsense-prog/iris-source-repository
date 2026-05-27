@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.2",
+    version: "0.1.3",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
@@ -37,7 +37,8 @@ async function latestTitles(limit) {
 async function discoverSections() {
   return [
     { id: "latest_updates", title: "Latest Updates", kind: "chapterUpdates" },
-    { id: "webtoons", title: "Webtoons", kind: "simpleCarousel" },
+    { id: "popular", title: "Popular", kind: "simpleCarousel" },
+    { id: "webtoons", title: "All Webtoons", kind: "simpleCarousel" },
     { id: "genres", title: "Genres", kind: "genres" }
   ];
 }
@@ -48,13 +49,55 @@ async function discoverItems(sectionID, limit, page) {
 
   switch (sectionID) {
   case "latest_updates":
+  case "latest":
+    return discoverPagedTitles((page) => webtoonListPath(page, "latest"), size, pageNumber);
+  case "popular":
+    return discoverPagedTitles((page) => webtoonListPath(page, "views"), size, pageNumber);
   case "webtoons":
-    return parseTitleList(await htmlGet(pageNumber > 1 ? `/webtoons/page/${pageNumber}/` : "/webtoons/"), size);
+  case "catalog":
+    return discoverPagedTitles((page) => webtoonListPath(page, ""), size, pageNumber);
   case "genres":
     return [];
   default:
     return latestTitles(size);
   }
+}
+
+async function discoverPagedTitles(pathForPage, limit, requestedPageNumber) {
+  const size = Math.max(1, Number(limit) || 20);
+  const pageNumber = Math.max(1, Number(requestedPageNumber) || 1);
+
+  if (pageNumber > 1) {
+    return parseTitleList(await htmlGet(pathForPage(pageNumber)), size);
+  }
+
+  const items = [];
+  const seen = {};
+  const maxPages = Math.min(100, Math.max(1, Math.ceil(size / 20) + 3));
+  let stagnantPages = 0;
+
+  for (let currentPage = 1; items.length < size && currentPage <= maxPages && stagnantPages < 2; currentPage += 1) {
+    const before = items.length;
+    const pageItems = parseTitleList(await htmlGet(pathForPage(currentPage)), 200);
+    for (const item of pageItems) {
+      if (!item || !item.id || seen[item.id]) {
+        continue;
+      }
+      seen[item.id] = true;
+      items.push(item);
+      if (items.length >= size) {
+        break;
+      }
+    }
+    stagnantPages = items.length === before ? stagnantPages + 1 : 0;
+  }
+
+  return items.slice(0, size);
+}
+
+function webtoonListPath(pageNumber, order) {
+  const path = pageNumber > 1 ? `/webtoons/page/${pageNumber}/` : "/webtoons/";
+  return order ? `${path}?order=${encodeURIComponent(order)}` : path;
 }
 
 async function search(request) {

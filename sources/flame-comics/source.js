@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: "Community",
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Everyone",
     website: SITE_BASE_URL,
@@ -21,9 +21,7 @@ function getManifest() {
 }
 
 async function latestTitles(limit) {
-  const data = await nextData("/");
-  const entries = (((data.latestEntries || {}).blocks || [])[0] || {}).series || [];
-  return entries.map(mapListSeries).filter(Boolean).slice(0, limit || 20);
+  return discoverItems("latest", limit || 20, 0);
 }
 
 async function discoverSections() {
@@ -36,32 +34,70 @@ async function discoverSections() {
 }
 
 async function discoverItems(sectionID, limit, page) {
-  const data = await nextData("/");
   const size = Number(limit) || 20;
-  const offset = (Number(page) || 0) * size;
+  const pageIndex = Number(page) || 0;
   let entries = [];
 
   switch (sectionID) {
   case "popular":
-    entries = blockSeries(data.popularEntries);
-    break;
+    entries = await browseEntries();
+    entries.sort((left, right) => numberValue(right.likes) - numberValue(left.likes));
+    return pagedTitles(entries, size, pageIndex);
   case "staff_picks":
-    entries = blockSeries(data.staffPicks);
-    break;
+    entries = blockSeries((await nextData("/")).staffPicks);
+    return pageIndex > 0 ? [] : pagedTitles(entries, size, 0);
   case "latest":
   case "latest_updates":
-    entries = blockSeries(data.latestEntries);
-    break;
+    entries = await latestEntries();
+    return pagedTitles(entries, size, pageIndex);
+  case "catalog":
+  case "browse":
+    entries = await browseEntries();
+    return pagedTitles(entries, size, pageIndex);
   case "genres":
     return [];
   default:
     return latestTitles(size);
   }
+}
 
-  return entries
+async function latestEntries() {
+  const data = await nextData("/latest");
+  if (Array.isArray(data.allSeries)) {
+    return data.allSeries;
+  }
+  return blockSeries((await nextData("/")).latestEntries);
+}
+
+async function browseEntries() {
+  const data = await nextData("/browse");
+  return Array.isArray(data.series) ? data.series : [];
+}
+
+function pagedTitles(entries, limit, page) {
+  const size = Math.max(1, Number(limit) || 20);
+  const pageIndex = Math.max(0, Number(page) || 0);
+  const offset = pageIndex * size;
+  return uniqueSeries(entries)
     .map(mapListSeries)
     .filter(Boolean)
     .slice(offset, offset + size);
+}
+
+function uniqueSeries(entries) {
+  const seen = {};
+  const results = [];
+
+  for (const entry of entries || []) {
+    const id = entry && (entry.series_id || entry.seriesID);
+    if (!id || seen[id]) {
+      continue;
+    }
+    seen[id] = true;
+    results.push(entry);
+  }
+
+  return results;
 }
 
 async function search(query) {
