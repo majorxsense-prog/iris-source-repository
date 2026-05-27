@@ -1,7 +1,7 @@
 {
   "name": "Iris Source Repository",
   "id": "majorxsense-prog.iris-source-repository",
-  "version": 4,
+  "version": 5,
   "schemaVersion": 1,
   "description": "Community source catalog for the Iris reader app.",
   "homepage": "https://github.com/majorxsense-prog/iris-source-repository",
@@ -63,7 +63,7 @@
       "language": "en",
       "contentRating": "Mature",
       "website": "https://www.toongod.org/webtoons/",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "manifest": "sources/toongod/source.json",
       "package": "sources/toongod",
       "source": "sources/toongod/source.js",
