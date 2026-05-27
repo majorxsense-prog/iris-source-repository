@@ -3,7 +3,7 @@
   "name": "ToonGod",
   "author": "majorxsense-prog",
   "description": "Iris JavaScript source for toongod.org. Requires browser verification when Cloudflare challenges are active.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "schemaVersion": 1,
   "language": "en",
   "website": "https://www.toongod.org/webtoons/",
@@ -20,6 +20,14 @@
   "cookieDomains": [
     "www.toongod.org",
     "toongod.org"
+  ],
+  "settings": [
+    {
+      "id": "showAdultTitles",
+      "type": "boolean",
+      "title": "Show 18+ Titles",
+      "defaultValue": true
+    }
   ],
   "capabilities": [
     "CHAPTER_PROVIDING",

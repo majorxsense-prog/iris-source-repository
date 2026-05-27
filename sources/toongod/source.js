@@ -8,12 +8,20 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
     requiresWebSession: true,
     cookieDomains: ["www.toongod.org", "toongod.org"],
+    settings: [
+      {
+        id: "showAdultTitles",
+        type: "boolean",
+        title: "Show 18+ Titles",
+        defaultValue: true
+      }
+    ],
     capabilities: [
       "CHAPTER_PROVIDING",
       "DISCOVER_SECTION_PROVIDING",
@@ -63,7 +71,7 @@ async function details(title) {
   const html = await htmlGet(`/webtoon/${encodeURIComponent(slug)}/`);
   const base = titleDTO({
     id: slug,
-    title: htmlText(firstMatch(html, /<h1[^>]*>([\s\S]*?)<\/h1>/i) || firstMatch(html, /<h3[^>]*class="[^"]*post-title[^"]*"[^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>/i) || (title && title.title) || slug),
+    title: titleFromDocument(html, title, slug),
     coverURL: firstImage(html),
     synopsis: htmlText(firstMatch(html, /<div[^>]*class="[^"]*(?:summary__content|description-summary|manga-excerpt)[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || ""),
     status: htmlText(firstMatch(html, /(?:Status|State)[\s\S]{0,160}?<[^>]*>([^<]+)<\/[^>]+>/i) || ""),
@@ -91,19 +99,17 @@ async function chapters(title) {
       continue;
     }
     seen[id] = true;
-    const text = htmlText(firstMatch(block, /<a[^>]+href=["'][^"']*\/(?:webtoon|manga)\/[^"']+\/(?:chapter|ch)-[^"']+\/?["'][^>]*>([\s\S]*?)<\/a>/i));
+    const text = chapterTitle(block, id);
     const number = chapterNumber(text || id);
     const publishedAt = parseChapterDate(block);
     const summary = {
       id,
       title: text || `Chapter ${formatNumber(number)}`,
       number,
+      publishedAt: publishedAt || null,
       isLocked: false,
       pageCount: 0
     };
-    if (publishedAt) {
-      summary.publishedAt = publishedAt;
-    }
     results.push(summary);
   }
 
@@ -127,6 +133,7 @@ async function chapterDetails(title, chapter) {
   }));
 
   if (!pages.length) {
+    hostLog(`ToonGod chapter image parse failed. Image tags: ${countMatches(html, /<(?:img|amp-img|source)\b/gi)}. HTML title: ${titleFromDocument(html, title, titleSlug(title))}`);
     throw new Error("ToonGod did not return any readable pages for this chapter.");
   }
 
@@ -204,10 +211,14 @@ function parseTitleList(html, limit) {
       continue;
     }
     seen[slug] = true;
-    const block = cardBlock(html, match.index);
-    const title = titleFromBlock(block, match[3], slug);
-    const latest = htmlText(firstMatch(block, /(Chapter\s+[0-9][^<]*)/i) || "");
-    const coverURL = firstImage(block);
+    const block = listingBlock(html, match.index);
+    const isAdult = isAdultBlock(block);
+    if (isAdult && !shouldShowAdultTitles()) {
+      continue;
+    }
+    const title = titleFromBlock(block, match[3], slug, match[0]);
+    const latest = latestChapterFromBlock(block);
+    const coverURL = firstImage(match[0]) || firstImage(block);
     items.push(titleDTO({
       id: slug,
       title,
@@ -224,22 +235,76 @@ function parseTitleList(html, limit) {
 }
 
 function parseReaderImages(html) {
-  const content = firstMatch(html, /<div[^>]*class=["'][^"']*(?:reading-content|entry-content|chapter-content|chapter-images)[^"']*["'][^>]*>([\s\S]*?)(?:<div[^>]*class=["'][^"']*(?:nav-links|chapter-nav|wp-manga-nav)[^"']*["']|<\/article>|<\/main>)/i) || html;
+  const content = readerContent(html) || html;
   const images = [];
   const seen = {};
-  const imagePattern = /<img\b[^>]*>/gi;
+  collectReaderImageURLs(content, images, seen);
+
+  if (!images.length && content !== html) {
+    collectReaderImageURLs(html, images, seen);
+  }
+
+  return images;
+}
+
+function collectReaderImageURLs(content, images, seen) {
+  const imagePattern = /<(?:img|amp-img|source)\b[^>]*>/gi;
   let match;
 
   while ((match = imagePattern.exec(content)) !== null) {
-    const url = imageURLFromTag(match[0]);
+    const urls = imageURLsFromTag(match[0], true);
+    for (const url of urls) {
+      if (!url || seen[url]) {
+        continue;
+      }
+      seen[url] = true;
+      images.push(absoluteURL(url));
+    }
+  }
+
+  for (const url of scriptImageURLs(content)) {
     if (!url || seen[url]) {
       continue;
     }
     seen[url] = true;
     images.push(absoluteURL(url));
   }
+}
 
-  return images;
+function readerContent(html) {
+  const source = String(html || "");
+  const startMatch = source.match(/<div[^>]+class=["'][^"']*(?:reading-content|reading-img|reader-area|chapter-content|chapter-images|entry-content)[^"']*["'][^>]*>/i);
+  if (!startMatch) {
+    return "";
+  }
+
+  const start = startMatch.index;
+  const rest = source.slice(start);
+  const endMatch = rest.search(/<div[^>]+class=["'][^"']*(?:choose-chapter|newest-chapter|nav-links|chapter-nav|wp-manga-nav|comments-area)[^"']*["']|<\/article>|<\/main>|<footer\b/i);
+  return endMatch > 0 ? rest.slice(0, endMatch) : rest;
+}
+
+function scriptImageURLs(html) {
+  const urls = [];
+  const seen = {};
+  const text = String(html || "");
+  const patterns = [
+    /https?:\\?\/\\?\/[^"'`<>\s]+/gi,
+    /["'](\/[^"'`<>\s]+(?:\/chapters?\/|\/chapter\/)[^"'`<>\s]+)["']/gi
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const value = normalizeImageURL(match[1] || match[0]);
+      if (value && !seen[value] && isUsefulImageURL(value, true)) {
+        seen[value] = true;
+        urls.push(value);
+      }
+    }
+  }
+
+  return urls;
 }
 
 function parseTags(html) {
@@ -298,6 +363,17 @@ function chapterBlocks(html) {
     return blocks;
   }
 
+  const listItemPattern = /<li\b[^>]*>[\s\S]*?<\/li>/gi;
+  while ((match = listItemPattern.exec(html)) !== null) {
+    if (/\/(?:webtoon|manga)\/[^"']+\/(?:chapter|ch)-/i.test(match[0])) {
+      blocks.push(match[0]);
+    }
+  }
+
+  if (blocks.length) {
+    return blocks;
+  }
+
   const anchorPattern = /<a[^>]+href=["'][^"']*\/(?:webtoon|manga)\/[^"']+\/(?:chapter|ch)-[^"']+\/?["'][^>]*>[\s\S]*?<\/a>/gi;
   while ((match = anchorPattern.exec(html)) !== null) {
     blocks.push(cardBlock(html, match.index, 700, 1000));
@@ -312,12 +388,40 @@ function cardBlock(html, index, before, after) {
   return html.slice(start, end);
 }
 
+function listingBlock(html, index) {
+  const start = Math.max(0, index - 1400);
+  const end = Math.min(html.length, index + 2200);
+  const window = html.slice(start, end);
+  const relativeIndex = index - start;
+  const itemPattern = /<(?:div|article|li)[^>]+class=["'][^"']*(?:latest-item|page-item-detail|manga-item|manga|bsx|utao|listupd|item-thumb|item-summary)[^"']*["'][^>]*>/gi;
+  let itemStart = -1;
+  let match;
+
+  while ((match = itemPattern.exec(window)) !== null) {
+    if (match.index <= relativeIndex) {
+      itemStart = match.index;
+    }
+  }
+
+  if (itemStart < 0) {
+    return cardBlock(html, index, 500, 1600);
+  }
+
+  const tail = window.slice(Math.max(relativeIndex + 1, itemStart + 1));
+  itemPattern.lastIndex = 0;
+  const nextMatch = itemPattern.exec(tail);
+  const itemEnd = nextMatch && typeof nextMatch.index === "number"
+    ? Math.max(relativeIndex + 1, itemStart + 1) + nextMatch.index
+    : window.length;
+  return window.slice(itemStart, itemEnd);
+}
+
 function firstImage(html) {
-  const imagePattern = /<img\b[^>]*>/gi;
+  const imagePattern = /<(?:img|amp-img|source)\b[^>]*>/gi;
   let match;
 
   while ((match = imagePattern.exec(html)) !== null) {
-    const url = imageURLFromTag(match[0]);
+    const url = imageURLsFromTag(match[0], false)[0];
     if (url) {
       return url;
     }
@@ -326,10 +430,11 @@ function firstImage(html) {
   return null;
 }
 
-function imageURLFromTag(tag) {
+function imageURLsFromTag(tag, readerOnly) {
   const candidates = [
     attr(tag, "data-src"),
     attr(tag, "data-lazy-src"),
+    attr(tag, "data-pagespeed-lazy-src"),
     attr(tag, "data-original"),
     attr(tag, "data-cfsrc"),
     attr(tag, "data-url"),
@@ -340,32 +445,53 @@ function imageURLFromTag(tag) {
     firstSrcsetURL(attr(tag, "srcset")),
     attr(tag, "src")
   ];
+  const urls = [];
+  const seen = {};
 
   for (const candidate of candidates) {
-    const url = decodeHTML(String(candidate || "").trim());
-    if (isUsefulImageURL(url)) {
-      return absoluteURL(url);
+    const url = normalizeImageURL(candidate);
+    if (url && !seen[url] && isUsefulImageURL(url, readerOnly)) {
+      seen[url] = true;
+      urls.push(absoluteURL(url));
     }
   }
 
-  return null;
+  return urls;
 }
 
-function isUsefulImageURL(url) {
+function isUsefulImageURL(url, readerOnly) {
   const lower = String(url || "").toLowerCase();
-  return Boolean(url)
-    && !lower.startsWith("data:")
-    && !lower.includes("blank")
-    && !lower.includes("placeholder")
-    && !lower.includes("loading")
-    && !lower.includes("loader")
-    && !lower.includes("logo")
-    && !lower.includes("avatar")
-    && !lower.includes("spinner")
-    && !lower.includes("1x1")
-    && !lower.includes("pixel")
-    && !lower.includes("/cdn-cgi/")
-    && /\.(?:avif|webp|jpe?g|png)(?:[?#].*)?$/i.test(lower);
+  if (!url
+    || lower.startsWith("data:")
+    || lower.includes("blank")
+    || lower.includes("placeholder")
+    || lower.includes("loading")
+    || lower.includes("loader")
+    || lower.includes("logo")
+    || lower.includes("avatar")
+    || lower.includes("spinner")
+    || lower.includes("1x1")
+    || lower.includes("pixel")
+    || lower.includes("/cdn-cgi/")) {
+    return false;
+  }
+
+  const looksLikeImage = /\.(?:avif|webp|jpe?g|png)(?:[?#].*)?$/i.test(lower);
+  if (!readerOnly) {
+    return looksLikeImage;
+  }
+
+  return looksLikeImage
+    || lower.includes("/chapters/")
+    || lower.includes("/chapter/")
+    || /\/uploads\/manga\/[^?#]+\/(?:chapters?|[0-9]+)/i.test(lower);
+}
+
+function normalizeImageURL(value) {
+  return decodeHTML(String(value || "")
+    .trim()
+    .replace(/\\\//g, "/")
+    .replace(/\\u0026/g, "&"));
 }
 
 function firstSrcsetURL(value) {
@@ -373,19 +499,109 @@ function firstSrcsetURL(value) {
   return first.trim().split(/\s+/)[0] || "";
 }
 
-function titleFromBlock(block, anchorHTML, slug) {
-  return htmlText(firstMatch(block, /<h[1-6][^>]*class=["'][^"']*(?:post-title|manga-title|entry-title)[^"']*["'][^>]*>([\s\S]*?)<\/h[1-6]>/i))
-    || htmlText(anchorHTML)
-    || htmlText(attr(firstMatch(block, /<img\b[^>]*>/i), "alt"))
-    || slug.replace(/-/g, " ");
+function titleFromBlock(block, anchorHTML, slug, anchorTag) {
+  return firstCleanTitle([
+    attr(anchorTag, "title"),
+    attr(anchorTag, "aria-label"),
+    attr(anchorTag, "data-title"),
+    attr(firstMatch(block, /<img\b[^>]*>/i), "alt"),
+    attr(firstMatch(block, /<img\b[^>]*>/i), "title"),
+    firstMatch(block, /<h[1-6][^>]*class=["'][^"']*(?:post-title|manga-title|entry-title)[^"']*["'][^>]*>([\s\S]*?)<\/h[1-6]>/i),
+    anchorHTML,
+    slug.replace(/-/g, " ")
+  ]) || slug.replace(/-/g, " ");
+}
+
+function chapterTitle(block, id) {
+  const anchor = firstMatch(block, /<a[^>]+href=["'][^"']*\/(?:webtoon|manga)\/[^"']+\/(?:chapter|ch)-[^"']+\/?["'][^>]*>[\s\S]*?<\/a>/i);
+  const titleAttribute = attr(anchor, "title").replace(/^.*\s+-\s+/i, "");
+  const text = htmlText(firstMatch(block, /<span[^>]+class=["'][^"']*chapter-name[^"']*["'][^>]*>([\s\S]*?)<\/span>/i))
+    || htmlText(titleAttribute)
+    || htmlText(anchor);
+  const cleaned = text
+    .replace(/\b(?:today|yesterday)\b.*$/i, "")
+    .replace(/\b\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b.*$/i, "")
+    .replace(/\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b.*$/i, "")
+    .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b.*$/i, "")
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}\b.*$/i, "")
+    .trim();
+  return cleaned || `Chapter ${formatNumber(chapterNumber(id))}`;
+}
+
+function latestChapterFromBlock(block) {
+  const anchor = firstMatch(block, /<a[^>]+href=["'][^"']*\/(?:webtoon|manga)\/[^"']+\/(?:chapter|ch)-[^"']+\/?["'][^>]*>[\s\S]*?<\/a>/i);
+  const title = attr(anchor, "title").replace(/^.*\s+-\s+/i, "");
+  const text = htmlText(title) || htmlText(anchor);
+  const match = text.match(/(?:chapter|ch)\.?\s*([0-9]+(?:\.[0-9]+)?)/i);
+  return match ? `Chapter ${formatNumber(match[1])}` : "";
+}
+
+function titleFromDocument(html, fallbackTitle, slug) {
+  return firstCleanTitle([
+    firstMatch(html, /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    firstMatch(html, /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    firstMatch(html, /<h1[^>]*>([\s\S]*?)<\/h1>/i),
+    firstMatch(html, /<h3[^>]*class=["'][^"']*post-title[^"']*["'][^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>/i),
+    firstMatch(html, /<title[^>]*>([\s\S]*?)<\/title>/i),
+    fallbackTitle && fallbackTitle.title,
+    slug.replace(/-/g, " ")
+  ]) || slug.replace(/-/g, " ");
+}
+
+function firstCleanTitle(candidates) {
+  for (const candidate of candidates) {
+    const title = cleanTitle(candidate);
+    if (title) {
+      return title;
+    }
+  }
+  return "";
+}
+
+function cleanTitle(value) {
+  let title = htmlText(value)
+    .replace(/^read\s+/i, "")
+    .replace(/\s*(?:-|\u2013|\u2014)\s*toon\s*god.*$/i, "")
+    .replace(/\s*(?:-|\u2013|\u2014)\s*toongod.*$/i, "")
+    .replace(/\s*(?:-|\u2013|\u2014)\s*chapter\s+\d+(?:\.\d+)?.*$/i, "")
+    .replace(/\s+(?:manga|manhwa|manhua)\s*\[?latest chapters?\]?.*$/i, "")
+    .replace(/\s*\[?latest chapters?\]?.*$/i, "")
+    .trim();
+
+  if (!title || isBlockedTitle(title)) {
+    return "";
+  }
+  return title;
+}
+
+function isBlockedTitle(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return !normalized
+    || normalized === "18"
+    || normalized === "18+"
+    || normalized === "+18"
+    || normalized === "adult"
+    || normalized === "mature"
+    || normalized === "webtoon"
+    || normalized === "manga"
+    || normalized === "read more"
+    || normalized === "view details";
+}
+
+function isAdultBlock(block) {
+  return /(?:^|[>\s])(?:18\+|adult|mature|smut|uncensored)(?:[<\s]|$)/i.test(htmlText(block))
+    || /(?:webtoon-tag|manga-genre)\/(?:18|18-plus|adult|mature|smut|uncensored)/i.test(block);
 }
 
 function parseChapterDate(block) {
   const candidates = [
     attr(firstMatch(block, /<time\b[^>]*>/i), "datetime"),
-    firstMatch(block, /<span[^>]+class=["'][^"']*(?:chapter-release-date|date|time|chapter-time)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i),
-    firstMatch(block, /<i[^>]+class=["'][^"']*(?:chapter-release-date|date|time|chapter-time)[^"']*["'][^>]*>([\s\S]*?)<\/i>/i),
-    firstMatch(block, /<a[^>]+class=["'][^"']*(?:chapter-release-date|date|time|chapter-time)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)
+    firstMatch(block, /<span[^>]+class=["'][^"']*(?:chapter-release-date|ct-update|date|time|chapter-time)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i),
+    firstMatch(block, /<i[^>]+class=["'][^"']*(?:chapter-release-date|ct-update|date|time|chapter-time)[^"']*["'][^>]*>([\s\S]*?)<\/i>/i),
+    firstMatch(block, /<a[^>]+class=["'][^"']*(?:chapter-release-date|ct-update|date|time|chapter-time)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i),
+    firstMatch(block, /((?:\d{1,2}\s+)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})/i),
+    firstMatch(block, /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})/i),
+    firstMatch(block, /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})/i)
   ];
 
   for (const candidate of candidates) {
@@ -404,9 +620,12 @@ function parseDateText(value) {
     return null;
   }
 
-  const direct = Date.parse(text);
-  if (Number.isFinite(direct)) {
-    return new Date(direct).toISOString();
+  if (/^today$/i.test(text)) {
+    return new Date().toISOString();
+  }
+
+  if (/^yesterday$/i.test(text)) {
+    return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   }
 
   const relative = text.match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/i);
@@ -423,6 +642,64 @@ function parseDateText(value) {
       year: 365 * 24 * 60 * 60 * 1000
     };
     return new Date(Date.now() - amount * multipliers[unit]).toISOString();
+  }
+
+  if (!looksLikeDate(text)) {
+    return null;
+  }
+
+  const direct = Date.parse(text);
+  if (Number.isFinite(direct)) {
+    const date = new Date(direct);
+    const year = date.getUTCFullYear();
+    const maxYear = new Date().getUTCFullYear() + 1;
+    if (year >= 2000 && year <= maxYear) {
+      return date.toISOString();
+    }
+  }
+
+  return null;
+}
+
+function looksLikeDate(text) {
+  return /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b/i.test(text)
+    || /\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b/i.test(text)
+    || /\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}/.test(text)
+    || /\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}/.test(text);
+}
+
+function shouldShowAdultTitles() {
+  const value = hostState([
+    `${SOURCE_ID}.showAdultTitles`,
+    "showAdultTitles",
+    `sources.${SOURCE_ID}.showAdultTitles`
+  ]);
+
+  if (value === null || typeof value === "undefined" || value === "") {
+    return true;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  return !["false", "0", "no", "off"].includes(normalized);
+}
+
+function hostState(keys) {
+  if (typeof host === "undefined" || !host || typeof host.getState !== "function") {
+    return null;
+  }
+
+  for (const key of keys) {
+    try {
+      const value = host.getState(key);
+      if (value !== null && typeof value !== "undefined") {
+        return value;
+      }
+    } catch (error) {
+      hostLog(`Unable to read ToonGod setting ${key}: ${error.message || error}`);
+    }
   }
 
   return null;
@@ -524,6 +801,11 @@ function numberValue(value) {
 function formatNumber(value) {
   const number = numberValue(value);
   return Number.isInteger(number) ? String(number) : String(number);
+}
+
+function countMatches(text, pattern) {
+  const matches = String(text || "").match(pattern);
+  return matches ? matches.length : 0;
 }
 
 function hostLog(message) {
