@@ -1,0 +1,19 @@
+{
+  "id": "webtoon",
+  "name": "WEBTOON",
+  "author": "majorxsense-prog",
+  "version": "0.1.0",
+  "language": "en",
+  "contentRating": "Teen",
+  "website": "https://www.webtoons.com/en/",
+  "runtime": {
+    "kind": "javascript",
+    "entry": "source.js",
+    "minimumIrisVersion": "0.1.0"
+  },
+  "capabilities": [
+    "CHAPTER_PROVIDING",
+    "DISCOVER_SECTION_PROVIDING",
+    "SEARCH_RESULT_PROVIDING"
+  ]
+}
