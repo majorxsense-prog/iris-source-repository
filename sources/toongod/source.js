@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.3",
+    version: "0.1.4",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
@@ -73,7 +73,7 @@ async function discoverPagedTitles(pathForPage, limit, requestedPageNumber) {
 
   const items = [];
   const seen = {};
-  const maxPages = Math.min(100, Math.max(1, Math.ceil(size / 20) + 3));
+  const maxPages = Math.min(260, Math.max(1, Math.ceil(size / 20) + 3));
   let stagnantPages = 0;
 
   for (let currentPage = 1; items.length < size && currentPage <= maxPages && stagnantPages < 2; currentPage += 1) {
@@ -104,7 +104,7 @@ async function search(request) {
   const query = normalizeQuery(request && (request.title || request.query || request.text || request));
   const page = Number(request && request.page) || 0;
   const path = query
-    ? `/?s=${encodeURIComponent(query)}&post_type=wp-manga`
+    ? `/search/?s=${encodeURIComponent(query)}`
     : (page > 0 ? `/webtoons/page/${page + 1}/` : "/webtoons/");
   return parseTitleList(await htmlGet(path), 20);
 }
@@ -261,7 +261,7 @@ function parseTitleList(html, limit) {
     }
     const title = titleFromBlock(block, match[3], slug, match[0]);
     const latest = latestChapterFromBlock(block);
-    const coverURL = firstImage(match[0]) || firstImage(block);
+    const coverURL = firstImage(match[0]) || firstImage(block) || coverFallbackURL(slug);
     items.push(titleDTO({
       id: slug,
       title,
@@ -471,6 +471,10 @@ function firstImage(html) {
   }
 
   return null;
+}
+
+function coverFallbackURL(slug) {
+  return slug ? `${SITE_BASE_URL}/manga/${encodePathComponent(slug)}-cover.jpg` : null;
 }
 
 function imageURLsFromTag(tag, readerOnly) {
@@ -810,6 +814,13 @@ function absoluteURL(value) {
     return `${SITE_BASE_URL}${url}`;
   }
   return `${SITE_BASE_URL}/${url}`;
+}
+
+function encodePathComponent(value) {
+  return String(value)
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
 }
 
 function htmlText(html) {
