@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.7",
+    version: "0.1.8",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
@@ -68,7 +68,7 @@ async function discoverPagedTitles(pathForPage, limit, requestedPageNumber) {
   const pageNumber = Math.max(1, Number(requestedPageNumber) || 1);
 
   if (pageNumber > 1) {
-    return parseTitleList(await htmlGet(pathForPage(pageNumber)), size);
+    return enrichTitleMetadata(parseTitleList(await htmlGet(pathForPage(pageNumber)), size), size);
   }
 
   const items = [];
@@ -92,7 +92,7 @@ async function discoverPagedTitles(pathForPage, limit, requestedPageNumber) {
     stagnantPages = items.length === before ? stagnantPages + 1 : 0;
   }
 
-  return items.slice(0, size);
+  return enrichTitleMetadata(items.slice(0, size), size);
 }
 
 function webtoonListPath(pageNumber, order) {
@@ -150,7 +150,9 @@ function searchPaths(query, page) {
 async function details(title) {
   const slug = titleSlug(title);
   const html = await htmlGet(`/webtoon/${encodeURIComponent(slug)}/`);
-  const parsedChapterCount = chapterBlocks(html).length;
+  const blocks = chapterBlocks(html);
+  const parsedChapterCount = blocks.length;
+  const parsedLatestChapter = latestChapterFromChapterBlocks(blocks) || (parsedChapterCount ? `${parsedChapterCount} chapters` : "");
   const base = titleDTO({
     id: slug,
     title: titleFromDocument(html, title, slug),
@@ -158,7 +160,7 @@ async function details(title) {
     synopsis: htmlText(firstMatch(html, /<div[^>]*class="[^"]*(?:summary__content|description-summary|manga-excerpt)[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || ""),
     status: htmlText(firstMatch(html, /(?:Status|State)[\s\S]{0,160}?<[^>]*>([^<]+)<\/[^>]+>/i) || ""),
     type: "Webtoon",
-    latestChapter: (title && title.latestChapter) || "",
+    latestChapter: parsedLatestChapter || (title && title.latestChapter) || "",
     chapterCount: parsedChapterCount || (title && title.chapterCount) || 0,
     tags: parseTags(html)
   });
@@ -301,13 +303,14 @@ function parseTitleList(html, limit) {
     }
     const title = titleFromBlock(block, match[3], slug, match[0]);
     const latest = latestChapterFromBlock(block);
+    const chapterCount = chapterCountFromBlock(block, latest);
     const coverURL = firstImage(match[0]) || firstImage(block) || coverFallbackURL(slug);
     items.push(titleDTO({
       id: slug,
       title,
-      latestChapter: latest,
+      latestChapter: latest || (chapterCount ? `${chapterCount} chapters` : ""),
       coverURL,
-      chapterCount: chapterCountFromBlock(block, latest),
+      chapterCount,
       synopsis: "",
       status: "",
       type: "Webtoon",
@@ -316,6 +319,59 @@ function parseTitleList(html, limit) {
   }
 
   return items;
+}
+
+async function enrichTitleMetadata(items, limit) {
+  const sourceItems = Array.isArray(items) ? items : [];
+  const maxEnriched = Math.min(sourceItems.length, Math.max(1, Number(limit) || sourceItems.length), 12);
+  const enriched = [];
+
+  for (let index = 0; index < sourceItems.length; index += 1) {
+    const item = sourceItems[index];
+    if (!item || index >= maxEnriched || (item.latestChapter && numericChapterCount(item.chapterCount) > 0)) {
+      enriched.push(item);
+      continue;
+    }
+
+    try {
+      const meta = await titleMetadata(item.id || item.slug);
+      enriched.push(titleDTO(Object.assign({}, item, {
+        latestChapter: item.latestChapter || meta.latestChapter || (meta.chapterCount ? `${meta.chapterCount} chapters` : ""),
+        chapterCount: item.chapterCount || meta.chapterCount || 0,
+        coverURL: item.coverURL || item.coverUrl || meta.coverURL || null
+      })));
+    } catch (error) {
+      hostLog(`Unable to enrich ToonGod metadata for ${item.id || item.slug}: ${error.message || error}`);
+      enriched.push(item);
+    }
+  }
+
+  return enriched;
+}
+
+async function titleMetadata(slug) {
+  const normalizedSlug = String(slug || "").trim();
+  if (!normalizedSlug) {
+    return {};
+  }
+
+  const cached = cachedTitleMetadata(normalizedSlug);
+  if (cached) {
+    return cached;
+  }
+
+  const html = await htmlGet(`/webtoon/${encodeURIComponent(normalizedSlug)}/`);
+  const blocks = chapterBlocks(html);
+  const chapterCount = blocks.length;
+  const latestChapter = latestChapterFromChapterBlocks(blocks) || (chapterCount ? `${chapterCount} chapters` : "");
+  const coverURL = firstImage(html);
+  const metadata = {
+    latestChapter,
+    chapterCount,
+    coverURL
+  };
+  cacheTitleMetadata(normalizedSlug, metadata);
+  return metadata;
 }
 
 function parseReaderImages(html) {
@@ -676,8 +732,34 @@ function latestChapterFromBlock(block) {
   return match ? `Chapter ${formatNumber(match[1])}` : "";
 }
 
+function latestChapterFromChapterBlocks(blocks) {
+  let highest = 0;
+
+  for (const block of blocks || []) {
+    const latest = latestChapterFromBlock(block);
+    const latestNumber = numberFromChapterText(latest);
+    if (latestNumber > highest) {
+      highest = latestNumber;
+    }
+
+    const href = firstMatch(block, /\/(?:chapter|ch)-([0-9]+(?:\.[0-9]+)?)/i);
+    const hrefNumber = numberValue(href);
+    if (hrefNumber > highest) {
+      highest = hrefNumber;
+    }
+
+    const textNumber = numberFromChapterText(htmlText(block));
+    if (textNumber > highest) {
+      highest = textNumber;
+    }
+  }
+
+  return highest > 0 ? `Chapter ${formatNumber(highest)}` : "";
+}
+
 function chapterCountFromBlock(block, latestChapter) {
   const candidates = [
+    firstMatch(block, /(?:latest|newest|last)\s+(?:chapter|ch)\.?\s*([0-9]+(?:\.[0-9]+)?)/i),
     firstMatch(block, /(?:chapter|chapters)\s*[:#]?\s*([0-9]+(?:\.[0-9]+)?)/i),
     firstMatch(block, /([0-9]+(?:\.[0-9]+)?)\s+(?:chapter|chapters)\b/i),
     firstMatch(latestChapter, /([0-9]+(?:\.[0-9]+)?)/i)
@@ -690,6 +772,11 @@ function chapterCountFromBlock(block, latestChapter) {
     }
   }
   return 0;
+}
+
+function numberFromChapterText(value) {
+  const match = String(value || "").match(/(?:chapter|ch)\.?\s*([0-9]+(?:\.[0-9]+)?)/i);
+  return match ? numberValue(match[1]) : 0;
 }
 
 function titleFromDocument(html, fallbackTitle, slug) {
@@ -859,6 +946,51 @@ function hostState(keys) {
   }
 
   return null;
+}
+
+function cachedTitleMetadata(slug) {
+  const raw = hostState([
+    `titleMeta.${slug}`,
+    `${SOURCE_ID}.titleMeta.${slug}`,
+    `sources.${SOURCE_ID}.titleMeta.${slug}`
+  ]);
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const cached = JSON.parse(raw);
+    const cachedAt = Number(cached.cachedAt || 0);
+    if (!cachedAt || Date.now() - cachedAt > 7 * 24 * 60 * 60 * 1000) {
+      return null;
+    }
+    return {
+      latestChapter: cached.latestChapter || "",
+      chapterCount: numericChapterCount(cached.chapterCount),
+      coverURL: cached.coverURL || null
+    };
+  } catch (error) {
+    hostLog(`Unable to parse ToonGod cached metadata for ${slug}: ${error.message || error}`);
+    return null;
+  }
+}
+
+function cacheTitleMetadata(slug, metadata) {
+  if (typeof host === "undefined" || !host || typeof host.setState !== "function") {
+    return;
+  }
+
+  try {
+    host.setState(`titleMeta.${slug}`, JSON.stringify({
+      latestChapter: metadata.latestChapter || "",
+      chapterCount: numericChapterCount(metadata.chapterCount),
+      coverURL: metadata.coverURL || null,
+      cachedAt: Date.now()
+    }));
+  } catch (error) {
+    hostLog(`Unable to cache ToonGod metadata for ${slug}: ${error.message || error}`);
+  }
 }
 
 function attr(html, name) {
