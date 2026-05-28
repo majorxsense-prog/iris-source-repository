@@ -16,6 +16,10 @@ https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/r
 - Asura Scans (`asura-scans`) - `https://asurascans.com`
 - MangaDex (`mangadex`) - `https://mangadex.org`
 - ToonGod (`toongod`) - `https://www.toongod.org/webtoons/`
+- WEBTOON (`webtoon`) - `https://www.webtoons.com/en/`
+- Vortex Scans (`vortex-scans`) - `https://vortexscans.org`
+- Rolia Scan (`rolia-scan`) - `https://roliascan.com/home/`
+- Thunder Scans EN (`thunder-scans`) - `https://en-thunderscans.com/`
 
 ## Catalog Flow
 
@@ -25,3 +29,5 @@ https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/r
 4. Iris fetches the source manifest and installs the source package.
 
 Swift source files are included for native development builds. Runtime-installable community sources should target the same manifest shape and the app's dynamic source runner.
+
+See `SOURCE_CONTRACT.md` for the JavaScript DTO shape Iris expects from community sources.

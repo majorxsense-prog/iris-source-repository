@@ -9,7 +9,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Teen",
     website: SITE_BASE_URL,
@@ -71,20 +71,23 @@ async function details(title) {
     id: slug,
     title: firstClean([
       meta(html, "og:title"),
+      serializedStringField(decoded, "postTitle"),
       firstMatch(decoded, /"postTitle":"([^"]+)"/i),
       base.title,
       slug.replace(/-/g, " ")
     ]),
     coverURL: firstClean([
-      meta(html, "og:image"),
+      serializedStringField(decoded, "featuredImage"),
       firstMatch(decoded, /"featuredImage":"([^"]+)"/i),
-      firstImage(html),
-      base.coverURL || base.coverUrl
+      bestCoverURL(html, base.title || slug),
+      base.coverURL || base.coverUrl || base.cover || base.thumbnail || base.poster,
+      meta(html, "og:image")
     ]),
     synopsis: stripHTML(firstClean([meta(html, "description"), meta(html, "og:description")])),
-    status: firstClean([firstMatch(decoded, /"seriesStatus":"([^"]+)"/i), base.status]),
-    type: firstClean([firstMatch(decoded, /"seriesType":"([^"]+)"/i), base.type]),
+    status: firstClean([serializedStringField(decoded, "seriesStatus"), firstMatch(decoded, /"seriesStatus":"([^"]+)"/i), base.status]),
+    type: firstClean([serializedStringField(decoded, "seriesType"), firstMatch(decoded, /"seriesType":"([^"]+)"/i), base.type]),
     latestChapter: base.latestChapter || "",
+    chapterCount: chapterCountFromHTML(decoded) || base.chapterCount || chapterCountFromLatest(base.latestChapter),
     tags: parseGenres(decoded),
     postId: postIDFromHTML(decoded)
   });
@@ -165,6 +168,7 @@ function parseTitleList(html, limit) {
       continue;
     }
     seen[slug] = true;
+    const latestChapter = latestChapterNear(decoded, postPattern.lastIndex);
     items.push(titleDTO({
       id: slug,
       postId: match[1],
@@ -172,7 +176,8 @@ function parseTitleList(html, limit) {
       coverURL: match[4],
       type: match[5],
       status: match[6],
-      latestChapter: latestChapterNear(decoded, postPattern.lastIndex),
+      latestChapter,
+      chapterCount: chapterCountNear(decoded, postPattern.lastIndex, latestChapter),
       tags: []
     }));
   }
@@ -197,6 +202,7 @@ function parseAnchoredTitles(html, limit) {
     }
     seen[slug] = true;
     const block = cardBlock(html, match.index);
+    const latestChapter = latestChapterNear(decodeHTML(block), 0);
     items.push(titleDTO({
       id: slug,
       title: firstClean([
@@ -205,8 +211,9 @@ function parseAnchoredTitles(html, limit) {
         htmlText(match[3]),
         slug.replace(/-/g, " ")
       ]),
-      coverURL: firstImage(block),
-      latestChapter: latestChapterNear(decodeHTML(block), 0),
+      coverURL: bestCoverURL(match[0], slug) || bestCoverURL(block, slug),
+      latestChapter,
+      chapterCount: chapterCountNear(decodeHTML(block), 0, latestChapter),
       tags: []
     }));
   }
@@ -267,6 +274,17 @@ async function httpGetText(url, headers) {
 }
 
 function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount);
   return {
     id: input.id,
     postId: input.postId || input.postID || null,
@@ -279,15 +297,23 @@ function titleDTO(input) {
     latestChapter: input.latestChapter || "",
     progress: 0,
     coverSymbol: "book.closed",
-    coverURL: input.coverURL || null,
-    coverUrl: input.coverURL || null,
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
     synopsis: input.synopsis || "",
     status: input.status || "",
     type: input.type || "",
     author: null,
     artist: null,
     rating: null,
-    chapterCount: 0,
+    chapterCount,
     tags: input.tags || []
   };
 }
@@ -334,6 +360,56 @@ function latestChapterNear(text, index) {
   return number ? `Chapter ${formatNumber(number)}` : "";
 }
 
+function chapterCountNear(text, index, latestChapter) {
+  const window = String(text || "").slice(index, index + 2200);
+  return numericChapterCount(serializedNumberField(window, "totalChapterCount")
+    || serializedNumberField(window, "chapterCount")
+    || chapterCountFromLatest(latestChapter));
+}
+
+function chapterCountFromHTML(decodedHTML) {
+  return numericChapterCount(serializedNumberField(decodedHTML, "totalChapterCount")
+    || serializedNumberField(decodedHTML, "chapterCount"));
+}
+
+function chapterCountFromLatest(latestChapter) {
+  return numericChapterCount(firstMatch(latestChapter, /([0-9]+(?:\.[0-9]+)?)/i));
+}
+
+function serializedStringField(decodedHTML, field) {
+  const text = String(decodedHTML || "");
+  const name = escapeRegExp(field);
+  const patterns = [
+    new RegExp(`\\\\?"${name}\\\\?"\\s*:\\s*\\[0,\\\\?"([^"\\\\]*)\\\\?"\\]`, "i"),
+    new RegExp(`"${name}"\\s*:\\s*"([^"]*)"`, "i")
+  ];
+
+  for (const pattern of patterns) {
+    const value = firstMatch(text, pattern);
+    if (value) {
+      return decodeSerialized(value);
+    }
+  }
+  return "";
+}
+
+function serializedNumberField(decodedHTML, field) {
+  const text = String(decodedHTML || "");
+  const name = escapeRegExp(field);
+  const patterns = [
+    new RegExp(`\\\\?"${name}\\\\?"\\s*:\\s*\\[0,([0-9]+(?:\\.[0-9]+)?)\\]`, "i"),
+    new RegExp(`"${name}"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)`, "i")
+  ];
+
+  for (const pattern of patterns) {
+    const value = firstMatch(text, pattern);
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
 function parseGenres(decodedHTML) {
   const tags = [];
   const seen = {};
@@ -354,8 +430,74 @@ function cardBlock(html, index) {
 }
 
 function firstImage(html) {
-  const image = firstMatch(html, /<img\b[^>]*>/i);
-  return normalizeImageURL(attr(image, "data-src") || attr(image, "src"));
+  return bestCoverURL(html, "");
+}
+
+function bestCoverURL(html, expectedTitle) {
+  const tags = [];
+  const pattern = /<img\b[^>]*>/gi;
+  let match;
+
+  while ((match = pattern.exec(String(html || ""))) !== null) {
+    tags.push(match[0]);
+  }
+
+  const expected = normalizeToken(expectedTitle);
+  const scored = tags
+    .map((tag, index) => {
+      const url = imageURLFromTag(tag);
+      if (!isUsefulCoverURL(url)) {
+        return null;
+      }
+      const text = normalizeToken([attr(tag, "alt"), attr(tag, "title"), attr(tag, "class")].join(" "));
+      let score = 10 - index;
+      if (/itemprop=["']image["']/i.test(tag) || text.includes("cover")) {
+        score += 80;
+      }
+      if (expected && text && (text.includes(expected) || expected.includes(text))) {
+        score += 60;
+      }
+      if (/storage\.vortexscans\.org|wsrv\.nl/i.test(url)) {
+        score += 20;
+      }
+      return { url, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  return scored.length ? scored[0].url : "";
+}
+
+function imageURLFromTag(tag) {
+  return normalizeImageURL(attr(tag, "data-src")
+    || attr(tag, "data-lazy-src")
+    || firstSrcsetURL(attr(tag, "data-srcset"))
+    || firstSrcsetURL(attr(tag, "srcset"))
+    || attr(tag, "src"));
+}
+
+function firstSrcsetURL(value) {
+  const first = String(value || "").split(",")[0] || "";
+  return first.trim().split(/\s+/)[0] || "";
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /\.(?:avif|webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.startsWith("data:")
+    && !lower.includes("/api/og-image/")
+    && !lower.includes("logo")
+    && !lower.includes("avatar")
+    && !lower.includes("placeholder")
+    && !lower.includes("blank")
+    && !lower.includes("favicon")
+    && !lower.includes("spinner")
+    && !lower.includes("1x1");
+}
+
+function cleanCoverURL(value) {
+  const url = normalizeImageURL(value);
+  return isUsefulCoverURL(url) ? url : null;
 }
 
 function normalizeImageURL(value) {
@@ -448,6 +590,14 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
 function formatNumber(value) {
   const number = numberValue(value);
   return Number.isInteger(number) ? String(number) : String(number);
@@ -462,6 +612,20 @@ function cleanTitle(value) {
   return htmlText(String(value || "")
     .replace(/\\n/g, " ")
     .replace(/\\t/g, " "));
+}
+
+function decodeSerialized(value) {
+  return decodeHTML(String(value || "")
+    .replace(/\\"/g, "\"")
+    .replace(/\\\//g, "/")
+    .replace(/\\u0026/g, "&"));
+}
+
+function normalizeToken(value) {
+  return htmlText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function escapeRegExp(value) {

@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.6",
+    version: "0.1.7",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/webtoons/`,
@@ -150,14 +150,16 @@ function searchPaths(query, page) {
 async function details(title) {
   const slug = titleSlug(title);
   const html = await htmlGet(`/webtoon/${encodeURIComponent(slug)}/`);
+  const parsedChapterCount = chapterBlocks(html).length;
   const base = titleDTO({
     id: slug,
     title: titleFromDocument(html, title, slug),
-    coverURL: firstImage(html),
+    coverURL: firstImage(html) || (title && (title.coverURL || title.coverUrl || title.cover)),
     synopsis: htmlText(firstMatch(html, /<div[^>]*class="[^"]*(?:summary__content|description-summary|manga-excerpt)[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || ""),
     status: htmlText(firstMatch(html, /(?:Status|State)[\s\S]{0,160}?<[^>]*>([^<]+)<\/[^>]+>/i) || ""),
     type: "Webtoon",
     latestChapter: (title && title.latestChapter) || "",
+    chapterCount: parsedChapterCount || (title && title.chapterCount) || 0,
     tags: parseTags(html)
   });
   return base;
@@ -305,6 +307,7 @@ function parseTitleList(html, limit) {
       title,
       latestChapter: latest,
       coverURL,
+      chapterCount: chapterCountFromBlock(block, latest),
       synopsis: "",
       status: "",
       type: "Webtoon",
@@ -407,6 +410,17 @@ function parseTags(html) {
 }
 
 function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount);
   return {
     id: input.id,
     sourceID: SOURCE_ID,
@@ -417,15 +431,23 @@ function titleDTO(input) {
     latestChapter: input.latestChapter || "",
     progress: 0,
     coverSymbol: "book.closed",
-    coverURL: input.coverURL || null,
-    coverUrl: input.coverURL || null,
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
     synopsis: input.synopsis || "",
     status: input.status || "",
     type: input.type || "",
     author: null,
     artist: null,
     rating: null,
-    chapterCount: 0,
+    chapterCount,
     tags: input.tags || []
   };
 }
@@ -604,6 +626,14 @@ function normalizeImageURL(value) {
     .replace(/\\u0026/g, "&"));
 }
 
+function cleanCoverURL(value) {
+  const url = normalizeImageURL(value);
+  if (!url || !isUsefulImageURL(url, false)) {
+    return null;
+  }
+  return absoluteURL(url);
+}
+
 function firstSrcsetURL(value) {
   const first = String(value || "").split(",")[0] || "";
   return first.trim().split(/\s+/)[0] || "";
@@ -644,6 +674,22 @@ function latestChapterFromBlock(block) {
   const text = htmlText(title) || htmlText(anchor);
   const match = text.match(/(?:chapter|ch)\.?\s*([0-9]+(?:\.[0-9]+)?)/i);
   return match ? `Chapter ${formatNumber(match[1])}` : "";
+}
+
+function chapterCountFromBlock(block, latestChapter) {
+  const candidates = [
+    firstMatch(block, /(?:chapter|chapters)\s*[:#]?\s*([0-9]+(?:\.[0-9]+)?)/i),
+    firstMatch(block, /([0-9]+(?:\.[0-9]+)?)\s+(?:chapter|chapters)\b/i),
+    firstMatch(latestChapter, /([0-9]+(?:\.[0-9]+)?)/i)
+  ];
+
+  for (const candidate of candidates) {
+    const count = numericChapterCount(candidate);
+    if (count > 0) {
+      return count;
+    }
+  }
+  return 0;
 }
 
 function titleFromDocument(html, fallbackTitle, slug) {
@@ -913,6 +959,14 @@ function normalizeQuery(value) {
 function numberValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
 }
 
 function formatNumber(value) {

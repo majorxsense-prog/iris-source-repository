@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Teen",
     website: `${SITE_BASE_URL}/`,
@@ -71,7 +71,11 @@ async function details(title) {
       base.title,
       slug.replace(/-/g, " ")
     ]),
-    coverURL: firstClean([meta(html, "og:image"), firstImage(html), base.coverURL || base.coverUrl]),
+    coverURL: firstClean([
+      bestCoverURL(html, base.title || slug),
+      base.coverURL || base.coverUrl || base.cover || base.thumbnail || base.poster,
+      meta(html, "og:image")
+    ]),
     synopsis: firstClean([
       meta(html, "og:description"),
       firstMatch(html, /<div[^>]+class=["'][^"']*(?:entry-content|summary|desc|synopsis)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)
@@ -79,6 +83,7 @@ async function details(title) {
     status: firstClean([fieldAfterLabel(html, "Status"), base.status]),
     type: "Manga",
     latestChapter: latestChapterFromDetail(html) || base.latestChapter || "",
+    chapterCount: chapterCountFromDetail(html) || base.chapterCount || chapterCountFromLatest(base.latestChapter),
     tags: parseTags(html)
   });
 }
@@ -173,18 +178,22 @@ function parseTitleList(html, limit) {
     }
     seen[slug] = true;
     const block = cardBlock(html, match.index);
+    const title = firstClean([
+      attr(match[0], "title"),
+      attr(firstMatch(match[0], /<img\b[^>]*>/i), "alt"),
+      htmlText(match[3]),
+      attr(firstMatch(block, /<img\b[^>]*>/i), "alt"),
+      firstMatch(block, /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i),
+      firstMatch(block, /<div[^>]+class=["'][^"']*(?:tt|ttls|title|post-title)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i),
+      titleCaseSlug(slug)
+    ]);
+    const latestChapter = latestChapterFromBlock(block);
     items.push(titleDTO({
       id: slug,
-      title: firstClean([
-        attr(match[0], "title"),
-        htmlText(match[3]),
-        titleCaseSlug(slug),
-        attr(firstMatch(block, /<img\b[^>]*>/i), "alt"),
-        firstMatch(block, /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i),
-        firstMatch(block, /<div[^>]+class=["'][^"']*(?:tt|ttls|title|post-title)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)
-      ]),
-      coverURL: firstImage(block),
-      latestChapter: latestChapterFromBlock(block),
+      title,
+      coverURL: bestCoverURL(match[0], title) || bestCoverURL(block, title),
+      latestChapter,
+      chapterCount: chapterCountFromBlock(block, latestChapter),
       status: firstClean([firstMatch(block, /<span[^>]+class=["'][^"']*status[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)]),
       type: "Manga",
       tags: []
@@ -249,6 +258,17 @@ async function httpGetText(url, headers) {
 }
 
 function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount);
   return {
     id: input.id,
     sourceID: SOURCE_ID,
@@ -259,15 +279,23 @@ function titleDTO(input) {
     latestChapter: input.latestChapter || "",
     progress: 0,
     coverSymbol: "book.closed",
-    coverURL: input.coverURL || null,
-    coverUrl: input.coverURL || null,
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
     synopsis: input.synopsis || "",
     status: input.status || "",
     type: input.type || "",
     author: null,
     artist: null,
     rating: null,
-    chapterCount: 0,
+    chapterCount,
     tags: input.tags || []
   };
 }
@@ -305,6 +333,34 @@ function latestChapterFromDetail(html) {
 function latestChapterFromBlock(block) {
   const match = String(block || "").match(/Chapter\s*([0-9]+(?:\.[0-9]+)?)/i);
   return match ? `Chapter ${formatNumber(match[1])}` : "";
+}
+
+function chapterCountFromBlock(block, latestChapter) {
+  const candidates = [
+    firstMatch(block, /(?:chapter|chapters)\s*[:#]?\s*([0-9]+(?:\.[0-9]+)?)/i),
+    firstMatch(block, /([0-9]+(?:\.[0-9]+)?)\s+(?:chapter|chapters)\b/i),
+    firstMatch(latestChapter, /([0-9]+(?:\.[0-9]+)?)/i)
+  ];
+
+  for (const candidate of candidates) {
+    const count = numericChapterCount(candidate);
+    if (count > 0) {
+      return count;
+    }
+  }
+  return 0;
+}
+
+function chapterCountFromDetail(html) {
+  const chapterLinks = String(html || "").match(/<a\b[^>]+href=["'][^"']*chapter[^"']*["'][^>]*>/gi);
+  if (chapterLinks && chapterLinks.length) {
+    return chapterLinks.length;
+  }
+  return chapterCountFromLatest(latestChapterFromDetail(html));
+}
+
+function chapterCountFromLatest(latestChapter) {
+  return numericChapterCount(firstMatch(latestChapter, /([0-9]+(?:\.[0-9]+)?)/i));
 }
 
 function chapterTitle(block, number) {
@@ -345,6 +401,7 @@ function cardBlock(html, index) {
   const window = source.slice(startWindow, Math.min(source.length, index + 2600));
   const relative = index - startWindow;
   const markers = [
+    /<div[^>]+class=["'][^"']*\bswiper-slide\b[^"']*["'][^>]*>/gi,
     /<div[^>]+class=["'][^"']*\bbsx\b[^"']*["'][^>]*>/gi,
     /<article\b[^>]*>/gi,
     /<div[^>]+class=["'][^"']*\bbs\b[^"']*["'][^>]*>/gi
@@ -370,8 +427,79 @@ function cardBlock(html, index) {
 }
 
 function firstImage(html) {
-  const tag = firstMatch(html, /<img\b[^>]*>/i);
-  return normalizeImageURL(attr(tag, "data-src") || attr(tag, "data-lazy-src") || attr(tag, "src"));
+  return bestCoverURL(html, "");
+}
+
+function bestCoverURL(html, expectedTitle) {
+  const tags = [];
+  const pattern = /<img\b[^>]*>/gi;
+  let match;
+
+  while ((match = pattern.exec(String(html || ""))) !== null) {
+    tags.push(match[0]);
+  }
+
+  const expected = normalizeToken(expectedTitle);
+  const scored = tags
+    .map((tag, index) => {
+      const url = imageURLFromTag(tag);
+      if (!isUsefulCoverURL(url)) {
+        return null;
+      }
+      const text = normalizeToken([attr(tag, "alt"), attr(tag, "title"), attr(tag, "class")].join(" "));
+      let score = 10 - index;
+      if (/itemprop=["']image["']/i.test(tag) || text.includes("wp post image") || text.includes("ts post image")) {
+        score += 80;
+      }
+      if (expected && text && (text.includes(expected) || expected.includes(text))) {
+        score += 70;
+      }
+      if (/\/wp-content\/uploads\//i.test(url)) {
+        score += 25;
+      }
+      return { url, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  return scored.length ? scored[0].url : "";
+}
+
+function imageURLFromTag(tag) {
+  return normalizeImageURL(attr(tag, "data-src")
+    || attr(tag, "data-lazy-src")
+    || firstSrcsetURL(attr(tag, "data-srcset"))
+    || firstSrcsetURL(attr(tag, "srcset"))
+    || attr(tag, "src"));
+}
+
+function firstSrcsetURL(value) {
+  const first = String(value || "").split(",")[0] || "";
+  return first.trim().split(/\s+/)[0] || "";
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /\.(?:webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.startsWith("data:")
+    && !lower.includes("readerarea.svg")
+    && !lower.includes("placeholder")
+    && !lower.includes("blank")
+    && !lower.includes("loader")
+    && !lower.includes("spinner")
+    && !lower.includes("logo")
+    && !lower.includes("avatar")
+    && !lower.includes("gravatar")
+    && !lower.includes("en-th-web")
+    && !lower.includes("aaaaaaaa")
+    && !lower.includes("/wp-content/themes/")
+    && !lower.includes("footer")
+    && !lower.includes("header");
+}
+
+function cleanCoverURL(value) {
+  const url = normalizeImageURL(value);
+  return isUsefulCoverURL(url) ? url : null;
 }
 
 function normalizeImageURL(value) {
@@ -486,6 +614,14 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
 function formatNumber(value) {
   const number = numberValue(value);
   return Number.isInteger(number) ? String(number) : String(number);
@@ -493,6 +629,13 @@ function formatNumber(value) {
 
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeToken(value) {
+  return htmlText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function hostLog(message) {
