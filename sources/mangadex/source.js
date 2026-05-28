@@ -13,7 +13,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.0",
+    version: "0.1.2",
     language: TRANSLATED_LANGUAGE,
     contentRating: "Teen",
     website: SITE_BASE_URL,
@@ -242,26 +242,65 @@ function mapManga(manga) {
       ? "Latest update"
       : "";
 
-  return {
+  return titleDTO({
     id: manga.id,
-    sourceID: SOURCE_ID,
-    sourceId: SOURCE_ID,
     title: localized(attrs.title) || "Untitled",
     subtitle: [attrs.publicationDemographic, attrs.status].filter(Boolean).map(capitalize).join(" - "),
-    sourceName: SOURCE_NAME,
     latestChapter,
-    progress: 0,
-    coverSymbol: "book.closed",
     coverURL,
-    coverUrl: coverURL,
     synopsis: localized(attrs.description) || "",
     status: attrs.status || "",
     type: attrs.originalLanguage ? attrs.originalLanguage.toUpperCase() : "",
     author: author && author.attributes ? author.attributes.name || null : null,
     artist: artist && artist.attributes ? artist.attributes.name || null : null,
     rating: null,
-    chapterCount: 0,
+    chapterCount: chapterCountFromLatest(latestChapter),
     tags: tagNames(attrs.tags)
+  });
+}
+
+function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover_url
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount || input.chapters);
+
+  return {
+    id: String(input.id || input.slug || ""),
+    sourceID: SOURCE_ID,
+    sourceId: SOURCE_ID,
+    title: input.title || "Untitled",
+    subtitle: input.subtitle || [input.type, input.status].filter(Boolean).join(" - "),
+    sourceName: SOURCE_NAME,
+    latestChapter: input.latestChapter || "",
+    progress: 0,
+    coverSymbol: "book.closed",
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
+    synopsis: input.synopsis || input.description || "",
+    status: input.status || "",
+    type: input.type || "",
+    author: input.author || null,
+    artist: input.artist || null,
+    rating: numberOrNull(input.rating),
+    chapterCount,
+    tags: Array.isArray(input.tags) ? input.tags.filter(Boolean) : []
   };
 }
 
@@ -350,13 +389,56 @@ function formatNumber(value) {
 
 function dateString(value) {
   if (!value) {
-    return new Date(0).toISOString();
+    return null;
   }
   const time = Date.parse(value);
   if (!Number.isFinite(time)) {
-    return new Date(0).toISOString();
+    return null;
   }
   return new Date(time).toISOString();
+}
+
+function chapterCountFromLatest(latestChapter) {
+  const match = String(latestChapter || "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  return numericChapterCount(match ? match[1] : 0);
+}
+
+function cleanCoverURL(value) {
+  const url = String(value || "").trim().replace(/&amp;/g, "&").replace(/\\\//g, "/");
+  if (!isUsefulCoverURL(url)) {
+    return null;
+  }
+  return url;
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /^https?:\/\//i.test(url)
+    && /\.(?:avif|webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.includes("favicon")
+    && !lower.includes("logo")
+    && !lower.includes("placeholder")
+    && !lower.includes("no-image")
+    && !lower.includes("no_image")
+    && !lower.includes("avatar")
+    && !lower.includes("banner")
+    && !lower.includes("header");
+}
+
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
+function numberOrNull(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeQuery(value) {

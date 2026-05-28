@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Mature",
     website: `${SITE_BASE_URL}/home/`,
@@ -88,6 +88,7 @@ async function details(title) {
     author: firstClean([fieldAfterLabel(html, "Author"), base.author]),
     artist: firstClean([fieldAfterLabel(html, "Artist"), base.artist]),
     latestChapter: base.latestChapter || "",
+    chapterCount: base.chapterCount || chapterCountFromLatest(base.latestChapter),
     tags: parseTags(html)
   });
 }
@@ -181,6 +182,7 @@ function mapManga(item) {
     status: "",
     type: "Manga",
     latestChapter: dateLabel(item.modified_gmt || item.modified),
+    chapterCount: chapterCountFromLatest(dateLabel(item.modified_gmt || item.modified)),
     tags: []
   });
 }
@@ -237,28 +239,49 @@ async function httpGetText(url, headers) {
 }
 
 function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover_url
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount || input.chapters);
+
   return {
-    id: input.id,
+    id: String(input.id || input.slug || ""),
     mangaId: input.mangaId || input.mangaID || null,
     mangaID: input.mangaId || input.mangaID || null,
     sourceID: SOURCE_ID,
     sourceId: SOURCE_ID,
-    title: input.title || "Untitled",
+    title: htmlText(input.title || "Untitled") || "Untitled",
     subtitle: [input.type, input.status].filter(Boolean).join(" - "),
     sourceName: SOURCE_NAME,
     latestChapter: input.latestChapter || "",
     progress: 0,
     coverSymbol: "book.closed",
-    coverURL: input.coverURL || null,
-    coverUrl: input.coverURL || null,
-    synopsis: input.synopsis || "",
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
+    synopsis: input.synopsis || input.description || "",
     status: input.status || "",
     type: input.type || "",
     author: input.author || null,
     artist: input.artist || null,
-    rating: null,
-    chapterCount: 0,
-    tags: input.tags || []
+    rating: numberOrNull(input.rating),
+    chapterCount,
+    tags: Array.isArray(input.tags) ? input.tags.filter(Boolean) : []
   };
 }
 
@@ -334,6 +357,28 @@ function absoluteURL(value) {
   return `${SITE_BASE_URL}/${url}`;
 }
 
+function cleanCoverURL(value) {
+  const url = absoluteURL(String(value || "").trim().replace(/&amp;/g, "&").replace(/\\\//g, "/"));
+  if (!isUsefulCoverURL(url)) {
+    return null;
+  }
+  return url;
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /^https?:\/\//i.test(url)
+    && /\.(?:avif|webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.includes("favicon")
+    && !lower.includes("logo")
+    && !lower.includes("placeholder")
+    && !lower.includes("no-image")
+    && !lower.includes("no_image")
+    && !lower.includes("avatar")
+    && !lower.includes("banner")
+    && !lower.includes("header");
+}
+
 function queryString(values) {
   return Object.keys(values)
     .filter((key) => values[key] !== undefined && values[key] !== null && values[key] !== "")
@@ -386,7 +431,10 @@ function decodeHTML(value) {
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#8211;/g, "-")
+    .replace(/&#8212;/g, "-")
+    .replace(/&#8217;/g, "'");
 }
 
 function parseDateText(value) {
@@ -425,6 +473,27 @@ function normalizeQuery(value) {
 function numberValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
+function chapterCountFromLatest(latestChapter) {
+  const match = String(latestChapter || "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  return numericChapterCount(match ? match[1] : 0);
+}
+
+function numberOrNull(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatNumber(value) {

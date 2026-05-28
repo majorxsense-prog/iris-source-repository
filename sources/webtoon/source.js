@@ -9,7 +9,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Teen",
     website: `${EN_BASE_URL}/`,
@@ -82,6 +82,7 @@ async function details(title) {
     author: decodeHTML(meta(html, "com-linewebtoon:webtoon:author")),
     type: genreFromURL(titleURL(title)),
     latestChapter: base.latestChapter || "",
+    chapterCount: base.chapterCount || chapterCountFromLatest(base.latestChapter),
     tags: parseTags(html)
   });
 }
@@ -185,6 +186,7 @@ function parseTitleList(html, limit) {
       author,
       type: genreFromURL(url),
       latestChapter,
+      chapterCount: chapterCountFromLatest(latestChapter),
       tags: []
     }));
   }
@@ -287,8 +289,21 @@ async function httpGetText(url, headers) {
 }
 
 function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover_url
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount || input.chapters);
+
   return {
-    id: input.id,
+    id: String(input.id || input.slug || ""),
     url: input.url || null,
     sourceID: SOURCE_ID,
     sourceId: SOURCE_ID,
@@ -298,16 +313,24 @@ function titleDTO(input) {
     latestChapter: input.latestChapter || "",
     progress: 0,
     coverSymbol: "book.closed",
-    coverURL: input.coverURL || null,
-    coverUrl: input.coverURL || null,
-    synopsis: input.synopsis || "",
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
+    synopsis: input.synopsis || input.description || "",
     status: input.status || "",
     type: input.type || "",
     author: input.author || null,
     artist: null,
-    rating: null,
-    chapterCount: 0,
-    tags: input.tags || []
+    rating: numberOrNull(input.rating),
+    chapterCount,
+    tags: Array.isArray(input.tags) ? input.tags.filter(Boolean) : []
   };
 }
 
@@ -407,6 +430,28 @@ function firstImage(html) {
   return normalizeImageURL(attr(tag, "data-src") || attr(tag, "src"));
 }
 
+function cleanCoverURL(value) {
+  const url = normalizeImageURL(value);
+  if (!isUsefulCoverURL(url)) {
+    return null;
+  }
+  return url;
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /^https?:\/\//i.test(url)
+    && /\.(?:avif|webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.includes("favicon")
+    && !lower.includes("logo")
+    && !lower.includes("placeholder")
+    && !lower.includes("no-image")
+    && !lower.includes("no_image")
+    && !lower.includes("avatar")
+    && !lower.includes("banner")
+    && !lower.includes("header");
+}
+
 function normalizeImageURL(value) {
   const url = decodeHTML(String(value || "").trim().replace(/\\\//g, "/"));
   return url ? absoluteURL(url) : "";
@@ -487,6 +532,27 @@ function normalizeQuery(value) {
 function numberValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
+function chapterCountFromLatest(latestChapter) {
+  const match = String(latestChapter || "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  return numericChapterCount(match ? match[1] : 0);
+}
+
+function numberOrNull(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatNumber(value) {

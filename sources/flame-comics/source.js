@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: "Community",
-    version: "0.1.2",
+    version: "0.1.3",
     language: "en",
     contentRating: "Everyone",
     website: SITE_BASE_URL,
@@ -258,26 +258,47 @@ function mapSeriesDetail(series, chapterCount) {
 }
 
 function titleDTO(input) {
+  const coverURLValue = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover_url
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount || input.chapters);
+
   return {
-    id: input.id,
+    id: String(input.id || input.slug || ""),
     sourceID: SOURCE_ID,
     sourceId: SOURCE_ID,
-    title: input.title,
+    title: input.title || "Untitled",
     subtitle: input.subtitle || "",
     sourceName: SOURCE_NAME,
     latestChapter: input.latestChapter || "",
     progress: 0,
     coverSymbol: "flame",
-    coverURL: input.coverURL || null,
-    coverUrl: input.coverURL || null,
-    synopsis: input.synopsis || "",
+    coverURL: coverURLValue,
+    coverUrl: coverURLValue,
+    cover: coverURLValue,
+    thumbnail: coverURLValue,
+    thumbnailURL: coverURLValue,
+    thumbnailUrl: coverURLValue,
+    image: coverURLValue,
+    imageURL: coverURLValue,
+    imageUrl: coverURLValue,
+    poster: coverURLValue,
+    synopsis: input.synopsis || input.description || "",
     status: input.status || "",
     type: input.type || "",
     author: input.author || null,
     artist: input.artist || null,
-    rating: null,
-    chapterCount: input.chapterCount || 0,
-    tags: input.tags || []
+    rating: numberOrNull(input.rating),
+    chapterCount,
+    tags: Array.isArray(input.tags) ? input.tags.filter(Boolean) : []
   };
 }
 
@@ -371,9 +392,47 @@ function formatNumber(value) {
 function dateString(unixSeconds) {
   const seconds = Number(unixSeconds || 0);
   if (!Number.isFinite(seconds) || seconds <= 0) {
-    return new Date(0).toISOString();
+    return null;
   }
   return new Date(seconds * 1000).toISOString();
+}
+
+function cleanCoverURL(value) {
+  const url = String(value || "").trim().replace(/&amp;/g, "&").replace(/\\\//g, "/");
+  if (!isUsefulCoverURL(url)) {
+    return null;
+  }
+  return url;
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /^https?:\/\//i.test(url)
+    && /\.(?:avif|webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.includes("favicon")
+    && !lower.includes("logo")
+    && !lower.includes("placeholder")
+    && !lower.includes("no-image")
+    && !lower.includes("no_image")
+    && !lower.includes("avatar")
+    && !lower.includes("banner")
+    && !lower.includes("header");
+}
+
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
+function numberOrNull(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeQuery(value) {

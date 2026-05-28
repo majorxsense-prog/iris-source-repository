@@ -4,7 +4,7 @@
   "name": "Rolia Scan",
   "author": "majorxsense-prog",
   "description": "Iris JavaScript source for roliascan.com.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "schemaVersion": 1,
   "language": "en",
   "website": "https://roliascan.com/home/",

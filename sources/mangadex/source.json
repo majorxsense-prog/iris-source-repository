@@ -3,7 +3,7 @@
   "name": "MangaDex",
   "author": "majorxsense-prog",
   "description": "Iris JavaScript source for MangaDex's public API.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "schemaVersion": 1,
   "language": "en",
   "website": "https://mangadex.org",

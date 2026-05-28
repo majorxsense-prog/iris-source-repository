@@ -9,7 +9,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.1",
+    version: "0.1.2",
     language: "en",
     contentRating: "Everyone",
     website: SITE_BASE_URL,
@@ -204,26 +204,65 @@ function mapSeries(series) {
   const status = series.status || "";
   const subtitle = [capitalize(type), capitalize(status)].filter(Boolean).join(" - ") || latestChapter;
 
-  return {
+  return titleDTO({
     id: series.slug,
-    sourceID: SOURCE_ID,
-    sourceId: SOURCE_ID,
     title: series.title || "Untitled",
     subtitle,
-    sourceName: SOURCE_NAME,
     latestChapter,
-    progress: 0,
-    coverSymbol: "book.closed",
     coverURL: series.cover_url || series.cover || null,
-    coverUrl: series.cover_url || series.cover || null,
     synopsis: stripHTML(series.description || ""),
     status,
     type,
     author: cleanPlaceholder(series.author),
     artist: cleanPlaceholder(series.artist),
     rating: numberOrNull(series.rating),
-    chapterCount: series.chapter_count || series.chapterCount || 0,
+    chapterCount: series.chapter_count || series.chapterCount || chapterCountFromLatest(latestChapter),
     tags: genreNames(series.genres)
+  });
+}
+
+function titleDTO(input) {
+  const coverURL = cleanCoverURL(input.coverURL
+    || input.coverUrl
+    || input.cover_url
+    || input.cover
+    || input.thumbnail
+    || input.thumbnailURL
+    || input.thumbnailUrl
+    || input.image
+    || input.imageURL
+    || input.imageUrl
+    || input.poster);
+  const chapterCount = numericChapterCount(input.chapterCount || input.chapters);
+
+  return {
+    id: String(input.id || input.slug || ""),
+    sourceID: SOURCE_ID,
+    sourceId: SOURCE_ID,
+    title: input.title || "Untitled",
+    subtitle: input.subtitle || [input.type, input.status].filter(Boolean).map(capitalize).join(" - "),
+    sourceName: SOURCE_NAME,
+    latestChapter: input.latestChapter || "",
+    progress: 0,
+    coverSymbol: "book.closed",
+    coverURL,
+    coverUrl: coverURL,
+    cover: coverURL,
+    thumbnail: coverURL,
+    thumbnailURL: coverURL,
+    thumbnailUrl: coverURL,
+    image: coverURL,
+    imageURL: coverURL,
+    imageUrl: coverURL,
+    poster: coverURL,
+    synopsis: input.synopsis || input.description || "",
+    status: input.status || "",
+    type: input.type || "",
+    author: input.author || null,
+    artist: input.artist || null,
+    rating: numberOrNull(input.rating),
+    chapterCount,
+    tags: Array.isArray(input.tags) ? input.tags.filter(Boolean) : []
   };
 }
 
@@ -289,6 +328,9 @@ function numberValue(value) {
 }
 
 function numberOrNull(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -300,13 +342,48 @@ function formatNumber(value) {
 
 function dateString(value) {
   if (!value) {
-    return new Date(0).toISOString();
+    return null;
   }
   const time = Date.parse(value);
   if (!Number.isFinite(time)) {
-    return new Date(0).toISOString();
+    return null;
   }
   return new Date(time).toISOString();
+}
+
+function chapterCountFromLatest(latestChapter) {
+  const match = String(latestChapter || "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  return numericChapterCount(match ? match[1] : 0);
+}
+
+function cleanCoverURL(value) {
+  const url = String(value || "").trim().replace(/&amp;/g, "&").replace(/\\\//g, "/");
+  if (!isUsefulCoverURL(url)) {
+    return null;
+  }
+  return url;
+}
+
+function isUsefulCoverURL(url) {
+  const lower = String(url || "").toLowerCase();
+  return /^https?:\/\//i.test(url)
+    && /\.(?:avif|webp|jpe?g|png|gif)(?:[?#&].*)?$/i.test(lower)
+    && !lower.includes("favicon")
+    && !lower.includes("logo")
+    && !lower.includes("placeholder")
+    && !lower.includes("no-image")
+    && !lower.includes("no_image")
+    && !lower.includes("avatar")
+    && !lower.includes("banner")
+    && !lower.includes("header");
+}
+
+function numericChapterCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
 }
 
 function isFutureDate(value) {

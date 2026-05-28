@@ -28,6 +28,14 @@ https://raw.githubusercontent.com/majorxsense-prog/iris-source-repository/main/r
 3. When the user taps Add, Iris opens `installURL`.
 4. Iris fetches the source manifest and installs the source package.
 
-Swift source files are included for native development builds. Runtime-installable community sources should target the same manifest shape and the app's dynamic source runner.
+Swift source files are included for native development builds. Runtime-installable community sources should target the JavaScript manifest shape and the app's dynamic source runner.
 
-See `SOURCE_CONTRACT.md` for the JavaScript DTO shape Iris expects from community sources.
+## Community Sources
+
+To make a source for Iris:
+
+1. Read `SOURCE_CONTRACT.md`.
+2. Copy `templates/source-template.js`.
+3. Create a `source.json` manifest with `runtime.kind` set to `javascript`.
+4. Return the standard DTO shapes for discovery, search, details, chapters, and pages.
+5. Submit the package to this repository so Iris users can add it from the catalog.
