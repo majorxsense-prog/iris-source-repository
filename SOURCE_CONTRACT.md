@@ -1,6 +1,6 @@
 # Iris JavaScript Source Standard
 
-This document is the public compatibility contract for community-made Iris sources. It describes what a source package must expose and what data shapes Iris expects. It intentionally does not include Iris app source code.
+This document defines the public package format for Iris JavaScript sources.
 
 Use `templates/source-template.js` as a starting point for new sources.
 
@@ -146,21 +146,20 @@ Required:
 - `id`
 - `title`
 
-Accepted aliases:
+Canonical fields:
 
-- Description: `synopsis` or `description`
-- Chapter count: `chapterCount` or `chapters`
-- Cover: `coverURL`, `coverUrl`, `cover_url`, `cover`, `thumbnail`, `thumbnailURL`, `thumbnailUrl`, `image`, `imageURL`, `imageUrl`, or `poster`
+- `coverURL`
+- `synopsis`
+- `chapterCount`
 
-Preferred source output should still use `coverURL`, `synopsis`, and `chapterCount`.
+Iris may tolerate older field names for compatibility, but new sources should use the canonical names above.
 
 Cover rules:
 
-- Return the actual title cover, not the website logo.
-- Do not return OpenGraph share cards unless they are the only actual cover available.
-- Do not return placeholders, avatars, banners, headers, ads, or unrelated title thumbnails.
-- Avoid returning the same cover URL for multiple different titles in one result batch; Iris may drop duplicated covers.
-- Relative cover URLs are resolved against the source manifest website, but absolute URLs are safest.
+- Return title cover art suitable for a poster/card layout.
+- Avoid site chrome such as logos, banners, ads, navigation graphics, and generic placeholders.
+- Avoid returning the same cover URL for different titles in one result batch.
+- Use absolute URLs when possible.
 
 `chapterCount` should be numeric. If a site only exposes the latest chapter label, using that number as a best-effort count is acceptable. If unknown, return `0` or omit the field.
 
@@ -173,7 +172,7 @@ Cover rules:
   "id": "stable-chapter-id-or-absolute-url",
   "title": "Chapter 12",
   "number": 12,
-  "publishedAt": "2026-05-28T00:00:00.000Z",
+  "publishedAt": "2024-01-15T00:00:00.000Z",
   "isLocked": false,
   "pageCount": 0
 }
@@ -185,7 +184,6 @@ Rules:
 - `number` should be numeric.
 - `publishedAt` should be a real ISO8601 date when known.
 - Omit `publishedAt` or return `null` when unknown.
-- Do not return fake epoch dates such as 1969, 1970, or year 1.
 - Set `isLocked` to `true` for paid, unavailable, external, or blocked chapters.
 
 ## ReaderPageDTO
@@ -199,13 +197,7 @@ Rules:
 }
 ```
 
-Accepted URL fields:
-
-- `remoteURL`
-- `remoteUrl`
-- `url`
-
-Page URLs must be absolute. Return only readable page images. Filter out logos, arrows, recommendation thumbnails, avatars, ad images, tracking pixels, placeholders, and reader UI assets.
+Use `remoteURL` for each page URL. Page URLs must be absolute and should point to the readable page images in display order.
 
 ## ChapterDetailsDTO
 
@@ -245,5 +237,5 @@ Before submitting a source:
 - Search returns the same `SourceTitleDTO` shape as discovery.
 - Details preserves or improves `coverURL`, `chapterCount`, `synopsis`, `status`, `author`, `artist`, and `tags`.
 - Chapters use real dates or `null`.
-- Reader pages are only page images.
+- Reader pages are returned in reading order.
 - Locked/unavailable chapters fail clearly instead of showing blank pages.

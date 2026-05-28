@@ -95,40 +95,18 @@ async function httpGetText(url, headers) {
 
 function titleDTO(input) {
   input = input || {};
-  const coverURL = cleanCoverURL(input.coverURL
-    || input.coverUrl
-    || input.cover_url
-    || input.cover
-    || input.thumbnail
-    || input.thumbnailURL
-    || input.thumbnailUrl
-    || input.image
-    || input.imageURL
-    || input.imageUrl
-    || input.poster);
-  const chapterCount = numericChapterCount(input.chapterCount || input.chapters);
+  const coverURL = cleanCoverURL(input.coverURL);
+  const chapterCount = numericChapterCount(input.chapterCount);
 
   return {
     id: String(input.id || input.slug || ""),
     sourceID: SOURCE_ID,
-    sourceId: SOURCE_ID,
     title: input.title || "Untitled",
     subtitle: input.subtitle || [input.type, input.status].filter(Boolean).join(" - "),
     sourceName: SOURCE_NAME,
     latestChapter: input.latestChapter || "",
-    progress: 0,
-    coverSymbol: "book.closed",
     coverURL,
-    coverUrl: coverURL,
-    cover: coverURL,
-    thumbnail: coverURL,
-    thumbnailURL: coverURL,
-    thumbnailUrl: coverURL,
-    image: coverURL,
-    imageURL: coverURL,
-    imageUrl: coverURL,
-    poster: coverURL,
-    synopsis: input.synopsis || input.description || "",
+    synopsis: input.synopsis || "",
     status: input.status || "",
     type: input.type || "",
     author: input.author || null,
@@ -155,9 +133,7 @@ function pageDTO(url, id) {
   const remoteURL = absoluteURL(url);
   return {
     id: String(id || remoteURL),
-    remoteURL,
-    remoteUrl: remoteURL,
-    url: remoteURL
+    remoteURL
   };
 }
 
