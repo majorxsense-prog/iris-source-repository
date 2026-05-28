@@ -8,7 +8,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.2",
+    version: "0.1.3",
     language: "en",
     contentRating: "Teen",
     website: `${SITE_BASE_URL}/`,
@@ -28,8 +28,7 @@ async function discoverSections() {
   return [
     { id: "latest_updates", title: "Latest Updates", kind: "chapterUpdates" },
     { id: "catalog", title: "All Comics", kind: "simpleCarousel" },
-    { id: "popular", title: "Popular", kind: "simpleCarousel" },
-    { id: "genres", title: "Genres", kind: "genres" }
+    { id: "popular", title: "Popular", kind: "simpleCarousel" }
   ];
 }
 
@@ -38,14 +37,16 @@ async function discoverItems(sectionID, limit, page) {
   const pageNumber = (Number(page) || 0) + 1;
   switch (sectionID) {
   case "popular":
-    return parseTitleList(await htmlGet(`/comics/page/${pageNumber}/?order=popular`), size);
+    return parseTitleList(catalogSectionHTML(await htmlGet(`/comics/page/${pageNumber}/?order=popular`)), size);
   case "catalog":
   case "series":
-    return parseTitleList(await htmlGet(pageNumber > 1 ? `/comics/page/${pageNumber}/` : "/comics/"), size);
+    return parseTitleList(catalogSectionHTML(await htmlGet(pageNumber > 1 ? `/comics/page/${pageNumber}/` : "/comics/")), size);
+  case "genres":
+    return [];
   case "latest_updates":
   case "latest":
   default:
-    return parseTitleList(await htmlGet(pageNumber > 1 ? `/page/${pageNumber}/` : "/"), size);
+    return parseTitleList(latestUpdatesSectionHTML(await htmlGet(pageNumber > 1 ? `/page/${pageNumber}/` : "/")), size);
   }
 }
 
@@ -173,7 +174,7 @@ function parseTitleList(html, limit) {
 
   while ((match = anchorPattern.exec(html)) !== null && items.length < (limit || 20)) {
     const slug = match[2];
-    if (!slug || seen[slug]) {
+    if (!slug || seen[slug] || ignoredComicSlug(slug)) {
       continue;
     }
     seen[slug] = true;
@@ -188,10 +189,14 @@ function parseTitleList(html, limit) {
       titleCaseSlug(slug)
     ]);
     const latestChapter = latestChapterFromBlock(block);
+    const coverURL = bestCoverURL(match[0], title) || bestCoverURL(block, title);
+    if (!coverURL && !looksLikeTitleCard(block)) {
+      continue;
+    }
     items.push(titleDTO({
       id: slug,
       title,
-      coverURL: bestCoverURL(match[0], title) || bestCoverURL(block, title),
+      coverURL,
       latestChapter,
       chapterCount: chapterCountFromBlock(block, latestChapter),
       status: firstClean([firstMatch(block, /<span[^>]+class=["'][^"']*status[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)]),
@@ -201,6 +206,53 @@ function parseTitleList(html, limit) {
   }
 
   return items;
+}
+
+function latestUpdatesSectionHTML(html) {
+  return sectionHTML(html, [
+    /<div[^>]+class=["'][^"']*\blatest-updates\b[^"']*["'][^>]*>/i,
+    /id=["']manga-posts["']/i,
+    /<h2[^>]*>\s*Latest\s+Update\s*<\/h2>/i
+  ], [
+    /<button[^>]+id=["']load-more["']/i,
+    /<div[^>]+class=["'][^"']*\bpagination\b[^"']*["'][^>]*>/i,
+    /<footer\b/i
+  ]);
+}
+
+function catalogSectionHTML(html) {
+  return sectionHTML(html, [
+    /<div[^>]+class=["'][^"']*\blistupd\b[^"']*["'][^>]*>/i
+  ], [
+    /<div[^>]+class=["'][^"']*\bpagination\b[^"']*["'][^>]*>/i,
+    /<footer\b/i
+  ]);
+}
+
+function sectionHTML(html, startPatterns, endPatterns) {
+  const source = String(html || "");
+  const start = firstPatternIndex(source, startPatterns);
+  if (start < 0) {
+    return source;
+  }
+
+  const end = firstPatternIndex(source, endPatterns, start + 1);
+  return end > start ? source.slice(start, end) : source.slice(start);
+}
+
+function firstPatternIndex(text, patterns, fromIndex) {
+  const source = String(text || "");
+  let best = -1;
+  for (const pattern of patterns || []) {
+    const flags = pattern.flags && pattern.flags.includes("g") ? pattern.flags : `${pattern.flags || ""}g`;
+    const regex = new RegExp(pattern.source, flags);
+    regex.lastIndex = Math.max(0, Number(fromIndex) || 0);
+    const match = regex.exec(source);
+    if (match && (best < 0 || match.index < best)) {
+      best = match.index;
+    }
+  }
+  return best;
 }
 
 function parseReaderImages(html) {
@@ -426,6 +478,14 @@ function cardBlock(html, index) {
   return next > 0 ? window.slice(itemStart, itemStart + 1 + next) : window.slice(itemStart);
 }
 
+function ignoredComicSlug(slug) {
+  return /^(?:list-mode|text-mode|view-all|all-chapters|privacy-policy|dmca|terms-and-conditions)$/i.test(String(slug || ""));
+}
+
+function looksLikeTitleCard(block) {
+  return /\b(?:bsx|styletere|ts-post-image|wp-post-image|bigor|chapter-list)\b/i.test(String(block || ""));
+}
+
 function firstImage(html) {
   return bestCoverURL(html, "");
 }
@@ -454,6 +514,20 @@ function bestCoverURL(html, expectedTitle) {
       if (expected && text && (text.includes(expected) || expected.includes(text))) {
         score += 70;
       }
+      if (/\b(?:ts-post-image|wp-post-image|attachment-medium|size-medium)\b/i.test(tag)) {
+        score += 100;
+      }
+      if (/\b(?:slider-content|swiper|banner)\b/i.test(tag)) {
+        score -= 120;
+      }
+      const dimensions = imageDimensions(tag, url);
+      if (dimensions.width > 0 && dimensions.height > 0) {
+        if (dimensions.height >= dimensions.width) {
+          score += 65;
+        } else if (dimensions.width > dimensions.height * 1.25) {
+          score -= 95;
+        }
+      }
       if (/\/wp-content\/uploads\//i.test(url)) {
         score += 25;
       }
@@ -463,6 +537,17 @@ function bestCoverURL(html, expectedTitle) {
     .sort((a, b) => b.score - a.score);
 
   return scored.length ? scored[0].url : "";
+}
+
+function imageDimensions(tag, url) {
+  const width = numericChapterCount(attr(tag, "width"));
+  const height = numericChapterCount(attr(tag, "height"));
+  if (width > 0 && height > 0) {
+    return { width, height };
+  }
+
+  const match = String(url || "").match(/-([0-9]{2,4})x([0-9]{2,4})\.(?:webp|jpe?g|png|gif)(?:[?#].*)?$/i);
+  return match ? { width: numericChapterCount(match[1]), height: numericChapterCount(match[2]) } : { width: 0, height: 0 };
 }
 
 function imageURLFromTag(tag) {
@@ -592,7 +677,21 @@ function decodeHTML(value) {
     .replace(/&gt;/g, ">")
     .replace(/&nbsp;/g, " ")
     .replace(/&#8211;/g, "-")
-    .replace(/&#8217;/g, "'");
+    .replace(/&#8217;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => htmlCodePoint(code, 16))
+    .replace(/&#([0-9]+);/g, (_, code) => htmlCodePoint(code, 10));
+}
+
+function htmlCodePoint(value, radix) {
+  const codePoint = parseInt(value, radix);
+  if (!Number.isFinite(codePoint) || codePoint <= 0) {
+    return "";
+  }
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch (_) {
+    return "";
+  }
 }
 
 function parseDateText(value) {

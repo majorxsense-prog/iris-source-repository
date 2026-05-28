@@ -1,7 +1,7 @@
 {
   "name": "Iris Source Repository",
   "id": "majorxsense-prog.iris-source-repository",
-  "version": 16,
+  "version": 17,
   "schemaVersion": 1,
   "description": "Community source catalog for the Iris reader app.",
   "homepage": "https://github.com/majorxsense-prog/iris-source-repository",
@@ -146,7 +146,7 @@
       "language": "en",
       "contentRating": "Teen",
       "website": "https://en-thunderscans.com/",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "schemaVersion": 1,
       "manifest": "sources/thunder-scans/source.json",
       "package": "sources/thunder-scans",
