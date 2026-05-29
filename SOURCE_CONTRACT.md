@@ -22,7 +22,7 @@ The source manifest must use the JavaScript runtime:
   "slug": "example-source",
   "name": "Example Source",
   "author": "Your Name",
-  "description": "Read public titles from example.com.",
+  "description": "Iris Official Source for example.com.",
   "version": "0.1.0",
   "schemaVersion": 1,
   "language": "en",

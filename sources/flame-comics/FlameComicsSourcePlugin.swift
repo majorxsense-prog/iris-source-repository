@@ -18,7 +18,7 @@ extension ExtensionManifest {
     static let flameComics = ExtensionManifest(
         slug: "flame-comics",
         name: "Flame Comics",
-        description: "Community source for flamecomics.xyz.",
+        description: "Iris Official Source for flamecomics.xyz.",
         version: "0.1.0",
         iconName: "flame",
         language: "en",

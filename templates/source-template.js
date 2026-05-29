@@ -9,6 +9,7 @@ function getManifest() {
     slug: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
+    description: "Iris Official Source for example.com.",
     version: "0.1.0",
     schemaVersion: 1,
     language: "en",

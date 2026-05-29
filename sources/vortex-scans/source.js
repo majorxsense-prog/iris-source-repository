@@ -9,7 +9,7 @@ function getManifest() {
     id: SOURCE_ID,
     name: SOURCE_NAME,
     author: SOURCE_AUTHOR,
-    version: "0.1.2",
+    version: "0.1.3",
     language: "en",
     contentRating: "Teen",
     website: SITE_BASE_URL,
@@ -66,6 +66,10 @@ async function details(title) {
   const slug = titleSlug(title);
   const html = await htmlGet(`/series/${encodeURIComponent(slug)}`);
   const decoded = decodeHTML(html);
+  const detailChunk = serializedTitleChunk(decoded, slug);
+  const postId = postIDFromHTML(decoded);
+  const detailLatestChapter = latestChapterFromChunk(detailChunk);
+  const apiMeta = !detailLatestChapter && postId ? await chapterMetadata(postId) : null;
   const base = titleFromObject(title);
   return titleDTO({
     id: slug,
@@ -77,19 +81,19 @@ async function details(title) {
       slug.replace(/-/g, " ")
     ]),
     coverURL: firstClean([
+      serializedStringField(detailChunk, "featuredImage"),
       serializedStringField(decoded, "featuredImage"),
-      firstMatch(decoded, /"featuredImage":"([^"]+)"/i),
       bestCoverURL(html, base.title || slug),
       base.coverURL || base.coverUrl || base.cover || base.thumbnail || base.poster,
       meta(html, "og:image")
     ]),
     synopsis: stripHTML(firstClean([meta(html, "description"), meta(html, "og:description")])),
-    status: firstClean([serializedStringField(decoded, "seriesStatus"), firstMatch(decoded, /"seriesStatus":"([^"]+)"/i), base.status]),
-    type: firstClean([serializedStringField(decoded, "seriesType"), firstMatch(decoded, /"seriesType":"([^"]+)"/i), base.type]),
-    latestChapter: base.latestChapter || "",
-    chapterCount: chapterCountFromHTML(decoded) || base.chapterCount || chapterCountFromLatest(base.latestChapter),
-    tags: parseGenres(decoded),
-    postId: postIDFromHTML(decoded)
+    status: firstClean([serializedStringField(detailChunk, "seriesStatus"), serializedStringField(decoded, "seriesStatus"), base.status]),
+    type: firstClean([serializedStringField(detailChunk, "seriesType"), serializedStringField(decoded, "seriesType"), base.type]),
+    latestChapter: base.latestChapter || detailLatestChapter || apiMeta && apiMeta.latestChapter || "",
+    chapterCount: chapterCountFromChunk(detailChunk, detailLatestChapter) || apiMeta && apiMeta.chapterCount || chapterCountFromHTML(decoded) || base.chapterCount || chapterCountFromLatest(base.latestChapter),
+    tags: parseGenres(detailChunk || decoded),
+    postId
   });
 }
 
@@ -157,36 +161,73 @@ async function chapterDetails(title, chapter) {
 
 function parseTitleList(html, limit) {
   const decoded = decodeHTML(html);
-  const items = [];
-  const seen = {};
-  const postPattern = /"id":(\d+),"slug":"([^"]+)","postTitle":"([^"]+)","featuredImage":"([^"]*)","seriesType":"([^"]*)","seriesStatus":"([^"]*)"/gi;
-  let match;
-
-  while ((match = postPattern.exec(decoded)) !== null && items.length < (limit || 20)) {
-    const slug = match[2];
-    if (!slug || seen[slug]) {
-      continue;
-    }
-    seen[slug] = true;
-    const latestChapter = latestChapterNear(decoded, postPattern.lastIndex);
-    items.push(titleDTO({
-      id: slug,
-      postId: match[1],
-      title: match[3],
-      coverURL: match[4],
-      type: match[5],
-      status: match[6],
-      latestChapter,
-      chapterCount: chapterCountNear(decoded, postPattern.lastIndex, latestChapter),
-      tags: []
-    }));
-  }
-
+  const items = parseSerializedTitles(decoded, limit || 20);
   if (items.length) {
     return items.slice(0, limit || 20);
   }
 
   return parseAnchoredTitles(html, limit || 20);
+}
+
+function parseSerializedTitles(decoded, limit) {
+  const items = [];
+  const seen = {};
+  const starts = serializedTitleStarts(decoded);
+
+  for (let index = 0; index < starts.length && items.length < (limit || 20); index += 1) {
+    const current = starts[index];
+    const next = starts[index + 1];
+    const chunk = decoded.slice(current.index, next ? next.index : current.index + 7000);
+    const slug = current.slug;
+    if (!slug || seen[slug]) {
+      continue;
+    }
+    seen[slug] = true;
+    const latestChapter = latestChapterFromChunk(chunk) || latestChapterNear(chunk, 0);
+    items.push(titleDTO({
+      id: slug,
+      postId: current.postId,
+      title: current.title,
+      coverURL: serializedStringField(chunk, "featuredImage"),
+      type: serializedStringField(chunk, "seriesType"),
+      status: serializedStringField(chunk, "seriesStatus"),
+      latestChapter,
+      chapterCount: chapterCountFromChunk(chunk, latestChapter),
+      tags: []
+    }));
+  }
+
+  return items;
+}
+
+function serializedTitleChunk(decoded, expectedSlug) {
+  const starts = serializedTitleStarts(decoded);
+  for (let index = 0; index < starts.length; index += 1) {
+    const current = starts[index];
+    if (current.slug !== expectedSlug) {
+      continue;
+    }
+    const next = starts[index + 1];
+    return String(decoded || "").slice(current.index, next ? next.index : current.index + 7000);
+  }
+  return "";
+}
+
+function serializedTitleStarts(decoded) {
+  const starts = [];
+  const seriesPattern = /\{"id":(\d+),"slug":"([^"]+)","postTitle":"([^"]+)"/gi;
+  let match;
+
+  while ((match = seriesPattern.exec(String(decoded || ""))) !== null) {
+    starts.push({
+      index: match.index,
+      postId: match[1],
+      slug: decodeSerialized(match[2]),
+      title: decodeSerialized(match[3])
+    });
+  }
+
+  return starts;
 }
 
 function parseAnchoredTitles(html, limit) {
@@ -254,6 +295,25 @@ async function apiGet(path) {
     "User-Agent": "Iris/0.1 (Vortex source)"
   });
   return JSON.parse(text);
+}
+
+async function chapterMetadata(postId) {
+  try {
+    const response = await apiGet(`/api/chapters?postId=${encodeURIComponent(postId)}`);
+    const list = response.post && Array.isArray(response.post.chapters)
+      ? response.post.chapters
+      : Array.isArray(response.chapters)
+        ? response.chapters
+        : [];
+    const highest = list.reduce((value, chapter) => Math.max(value, numberValue(chapter && (chapter.number || chapter.chapter))), 0);
+    return {
+      latestChapter: highest ? `Chapter ${formatNumber(highest)}` : "",
+      chapterCount: list.length || numericChapterCount(highest)
+    };
+  } catch (error) {
+    hostLog(`Unable to fetch Vortex chapter metadata: ${error.message || error}`);
+    return null;
+  }
 }
 
 async function httpGetText(url, headers) {
@@ -360,6 +420,19 @@ function latestChapterNear(text, index) {
   return number ? `Chapter ${formatNumber(number)}` : "";
 }
 
+function latestChapterFromChunk(chunk) {
+  const number = highestNumber(chunk, /"number":([0-9]+(?:\.[0-9]+)?)/gi)
+    || highestNumber(chunk, /Chapter\s*([0-9]+(?:\.[0-9]+)?)/gi);
+  return number ? `Chapter ${formatNumber(number)}` : "";
+}
+
+function chapterCountFromChunk(chunk, latestChapter) {
+  return numericChapterCount(firstMatch(chunk, /"_count":\{"chapters":([0-9]+(?:\.[0-9]+)?)/i)
+    || serializedNumberField(chunk, "totalChapterCount")
+    || serializedNumberField(chunk, "chapterCount")
+    || chapterCountFromLatest(latestChapter));
+}
+
 function chapterCountNear(text, index, latestChapter) {
   const window = String(text || "").slice(index, index + 2200);
   return numericChapterCount(serializedNumberField(window, "totalChapterCount")
@@ -374,6 +447,19 @@ function chapterCountFromHTML(decodedHTML) {
 
 function chapterCountFromLatest(latestChapter) {
   return numericChapterCount(firstMatch(latestChapter, /([0-9]+(?:\.[0-9]+)?)/i));
+}
+
+function highestNumber(text, pattern) {
+  let highest = 0;
+  let match;
+  pattern.lastIndex = 0;
+  while ((match = pattern.exec(String(text || ""))) !== null) {
+    const value = numberValue(match[1]);
+    if (value > highest) {
+      highest = value;
+    }
+  }
+  return highest;
 }
 
 function serializedStringField(decodedHTML, field) {
